@@ -13,6 +13,7 @@ class Param:
         # common parameters
         parser.add_argument("--gpu", default=0, type=int)
         parser.add_argument("--dataname", default="FewRel", type=str, help="Use TACRED or FewRel datasets.")
+        parser.add_argument("--logname", default=None, type=str)
         parser.add_argument("--task_name", default="FewRel", type=str)
         parser.add_argument("--device", default="cuda", type=str)
         parser.add_argument("--total_rounds", default=5, type=int)
