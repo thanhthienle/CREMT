@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
 #SBATCH --job-name=gpt # create a short name for your job
-#SBATCH --output=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_slurm_%A.out # create a output file
-#SBATCH --error=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_slurm_%A.err # create a error file
+#SBATCH --output=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_ntask_slurm_%A.out # create a output file
+#SBATCH --error=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_ntask_slurm_%A.err # create a error file
 #SBATCH --partition=applied # choose partition
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=32
