@@ -62,60 +62,41 @@ class Manager(object):
             total_hits = 0
             total_past_hits = 0
             total_cur_hits = 0
-            
-            for (past_labels, past_tokens, _), (cur_labels, cur_tokens, _) in td:
+
+            for data_tuple in td:
+                mtl_losses = []
                 optimizer.zero_grad()
+                for task_id, (labels, tokens, _) in enumerate(data_tuple):
+                    tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+                    targets = labels.type(torch.LongTensor).to(args.device)
+                    sampled += len(labels)
 
-                # batching
-                past_sampled += len(past_labels)
-                past_targets = past_labels.type(torch.LongTensor).to(args.device)
-                past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
+                    # classifier forward and loss
+                    reps = classifier(tokens)
+                    mtl_losses.append(F.cross_entropy(reps, targets, reduction="mean"))
+                    detached_loss = mtl_losses[-1].detach()
+                    
+                    # prediction
+                    _, pred = reps.detach().max(1)
+                    hits = (pred == targets.detach()).float().sum().data.cpu().numpy().item()
+                    total_hits += hits
 
-                cur_sampled += len(cur_labels)
-                cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
-                cur_tokens = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
+                    if task_id == len(data_tuple) - 1:
+                        cur_losses.append(detached_loss.item())
+                        cur_sampled += len(labels)
+                        total_cur_hits += hits
+                    else:
+                        past_losses.append(detached_loss.item())
+                        past_sampled += len(labels)
+                        total_past_hits += hits
 
-                sampled += past_sampled + cur_sampled
-
-                # classifier forward
-                past_reps = classifier(past_tokens)
-                cur_reps = classifier(cur_tokens)
-
-                # prediction
-                past_probs = F.softmax(past_reps, dim=1)
-                _, past_pred = past_probs.max(1)
-                past_hits = (past_pred == past_targets).float()   
-
-                cur_probs = F.softmax(cur_reps, dim=1)
-                _, cur_pred = cur_probs.max(1)
-                cur_hits = (cur_pred == cur_targets).float()
-
-                # accuracy
-                total_past_hits += past_hits.sum().data.cpu().numpy().item()
-                total_cur_hits += cur_hits.sum().data.cpu().numpy().item()
-                total_hits += total_past_hits + total_cur_hits
-
-                # loss components
-                past_loss = F.cross_entropy(input=past_reps, target=past_targets, reduction="mean")
-                cur_loss = F.cross_entropy(input=cur_reps, target=cur_targets, reduction="mean")
-
-                objectives = torch.stack(
-                    (past_loss, cur_loss,)
-                )
-                
-                past_losses.append(past_loss.item())
-                cur_losses.append(cur_loss.item())
-
+                objectives = torch.stack(mtl_losses)
                 _, _ = nash_mtl_object.backward(
                     losses=objectives,
                     shared_parameters=modules_params_list
                 )
 
-                # params update
-                # torch.nn.utils.clip_grad_norm_(modules_parameters, args.max_grad_norm)
                 optimizer.step()
-
-                # display
                 td.set_postfix(
                     past_loss = np.array(past_losses).mean(),
                     cur_loss = np.array(cur_losses).mean(),
@@ -123,11 +104,69 @@ class Manager(object):
                     ovr_acc = total_hits / sampled,
                 )
 
+            # for (past_labels, past_tokens, _), (cur_labels, cur_tokens, _) in td:
+            #     optimizer.zero_grad()
+
+            #     # batching
+            #     past_sampled += len(past_labels)
+            #     past_targets = past_labels.type(torch.LongTensor).to(args.device)
+            #     past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
+
+            #     cur_sampled += len(cur_labels)
+            #     cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
+            #     cur_tokens = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
+
+            #     sampled += past_sampled + cur_sampled
+
+            #     # classifier forward
+            #     past_reps = classifier(past_tokens)
+            #     cur_reps = classifier(cur_tokens)
+
+            #     # prediction
+            #     past_probs = F.softmax(past_reps, dim=1)
+            #     _, past_pred = past_probs.max(1)
+            #     past_hits = (past_pred == past_targets).float().sum().data.cpu().numpy().item()
+
+            #     cur_probs = F.softmax(cur_reps, dim=1)
+            #     _, cur_pred = cur_probs.max(1)
+            #     cur_hits = (cur_pred == cur_targets).float().sum().data.cpu().numpy().item()
+
+            #     # accuracy
+            #     total_past_hits += past_hits
+            #     total_cur_hits += cur_hits
+            #     total_hits += total_past_hits + total_cur_hits
+
+            #     # loss components
+            #     past_loss = F.cross_entropy(input=past_reps, target=past_targets, reduction="mean")
+            #     cur_loss = F.cross_entropy(input=cur_reps, target=cur_targets, reduction="mean")
+
+            #     past_losses.append(past_loss.item())
+            #     cur_losses.append(cur_loss.item())
+
+            #     objectives = torch.stack(
+            #         (past_loss, cur_loss,)
+            #     )
+
+            #     _, _ = nash_mtl_object.backward(
+            #         losses=objectives,
+            #         shared_parameters=modules_params_list
+            #     )
+
+            #     # params update
+            #     # torch.nn.utils.clip_grad_norm_(modules_parameters, args.max_grad_norm)
+            #     optimizer.step()
+
+            #     # display
+            #     td.set_postfix(
+            #         past_loss = np.array(past_losses).mean(),
+            #         cur_loss = np.array(cur_losses).mean(),
+            #         cur_acc = total_cur_hits / cur_sampled,
+            #         ovr_acc = total_hits / sampled,
+            #     )
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             combined_data_loader = zip(
-                get_data_loader(args, [instance for instance in replay_data if instance["relation"] not in self.cur_rel_ids], shuffle=True),
-                cycle(get_data_loader(args, [instance for instance in replay_data if instance["relation"] in self.cur_rel_ids], shuffle=True)),
+                *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in self.relids_of_task]
             )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
@@ -489,13 +528,6 @@ class Manager(object):
             # pools
             self.prompt_pools = []
 
-            # nash_mtl object
-            if args.mtl is not None:
-                if args.mtl != "nashmtl":
-                    raise NotImplementedError()
-                else: nash_mtl = METHODS[args.mtl](n_tasks=2, device=args.device, max_norm=args.max_grad_norm)
-            else: nash_mtl = None
-
             # initialize memory
             self.memorized_samples = {}
 
@@ -503,6 +535,9 @@ class Manager(object):
             all_train_tasks = []
             all_tasks = []
             seen_data = {}
+
+            # Current relations ids
+            self.relids_of_task = []
 
             # task predictor
             task_predictor = Classifier(args=args).to(args.device)
@@ -518,7 +553,14 @@ class Manager(object):
                 print(f"task={steps+1}")
                 print(f"current relations={current_relations}")
 
-                # Live results
+                # nash_mtl object
+                if args.mtl is not None and steps != 0:
+                    if args.mtl != "nashmtl":
+                        raise NotImplementedError()
+                    else: nash_mtl = METHODS[args.mtl](n_tasks=steps+1, device=args.device, max_norm=args.max_grad_norm)
+                else: nash_mtl = None
+
+                # Live result
                 writer.write("=" * 100)
                 writer.write("\n")
                 writer.write(f"task={steps+1}\n")
@@ -530,9 +572,7 @@ class Manager(object):
                 # initialize
                 cur_training_data = []
                 cur_test_data = []
-
-                # Current relations ids
-                self.cur_rel_ids = []
+                cur_rel_ids = []
 
                 for i, relation in enumerate(current_relations):
                     cur_training_data += training_data[relation]
@@ -540,9 +580,9 @@ class Manager(object):
                     cur_test_data += test_data[relation]
 
                     rel_id = self.rel2id[relation]
-                    self.cur_rel_ids.append(rel_id)
+                    cur_rel_ids.append(rel_id)
                     self.id2taskid[rel_id] = steps
-                self.cur_rel_ids = tuple(self.cur_rel_ids)
+                self.relids_of_task.append(cur_rel_ids)
 
                 # train encoder
                 if steps == 0:
@@ -580,10 +620,11 @@ class Manager(object):
                 all_tasks.append(cur_test_data)
 
                 # train
-                self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, None, "train_task_predictor_epoch_")
                 if steps == 0:
+                    self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, None, "train_task_predictor_epoch_")
                     self._train_normal_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, None, "train_prompted_classifier_epoch_")
                 else:
+                    self.train_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, nash_mtl, "train_task_predictor_epoch_")
                     self.train_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, nash_mtl, "train_prompted_classifier_epoch_")
 
                 # prediction
@@ -621,9 +662,9 @@ class Manager(object):
                 writer.write("accuracies:\n")
                 for x in test_cur:
                     print(x)
-                    writer.write(x + "\n")
+                    writer.write(f"{x}\n")
                 print("arverages:")
                 for x in test_total:
                     print(x)
-                    writer.write(x + "\n")
+                    writer.write(f"{x}\n")
                 writer.close()
