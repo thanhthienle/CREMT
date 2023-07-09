@@ -67,6 +67,8 @@ class BertRelationEncoder(nn.Module):
             self.pattern = config.pattern
             self.encoder.resize_token_embeddings(config.vocab_size + config.marker_size)
             self.encoder.embeddings.custom_freeze_ids(list(range(config.vocab_size, config.vocab_size + config.marker_size)))
+            for param in self.encoder.encoder.parameters():
+                param.requires_grad = False
         else:
             raise Exception("Wrong encoding.")
 
