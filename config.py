@@ -33,6 +33,7 @@ class Param:
         # MTL
         parser.add_argument("--mtl", default=None, type=str)
         parser.add_argument("--mtl_lr", default=1e-4, type=float)
+        parser.add_argument("--tasktype", default=None, type=str)
 
         # learning rate
         parser.add_argument("--classifier_lr", default=1e-2, type=float)
@@ -61,7 +62,7 @@ class Param:
         parser.add_argument("--seed", default=2021, type=int)
         
         # max gradient norm
-        parser.add_argument("--max_grad_norm", default=10, type=float)
+        parser.add_argument("--max_grad_norm", default=10.0, type=float)
 
         # dataset path
         parser.add_argument("--data_path", default="datasets/", type=str)
