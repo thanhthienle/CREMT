@@ -29,12 +29,11 @@ class Manager(object):
         super().__init__()
         if args.mtl is not None:
             if args.tasktype == "oldnew":
-                self._train_mtl_classifier = self._train_mtl_classifier_old_new
+                self.train_classifier = self._train_mtl_classifier_old_new
             elif args.tasktype == "ntask":
-                self._train_mtl_classifier = self._train_mtl_classifier_ntask
+                self.train_classifier = self._train_mtl_classifier_ntask
             else:
                 raise NotImplementedError()
-            self.train_classifier = self._train_mtl_classifier
         else:
             self.train_classifier = self._train_normal_classifier
 
