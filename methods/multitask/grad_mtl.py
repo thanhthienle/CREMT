@@ -119,7 +119,7 @@ def IMTL(grads_list):
     return sum([alpha[i] * grads[i] for i in range(len(grads_list))])
 
 
-def AUGD(grads_list):
+def AUGD(grads_list, unused_shit):
 
     scale_norm_grads1 = {}
     scale_norm_grads = {}
