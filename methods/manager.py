@@ -941,7 +941,6 @@ class NashManager(object):
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-
         classifier.train()
         swag_classifier.train()
 
@@ -1374,7 +1373,8 @@ class NashManager(object):
                 print(f"current relations={current_relations}")
 
                 # Nash Object
-                nash_mtl_object = NashMTL(n_tasks=2, device=args.device)
+                nash_num_tasks = 2 if args.tasktype == "oldnew" else steps+1
+                nash_mtl_object = NashMTL(n_tasks=nash_num_tasks, device=args.device)
 
                 # Live result
                 writer.write("=" * 100)
