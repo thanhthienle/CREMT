@@ -101,7 +101,7 @@ class NashMTL(WeightMethod):
         self,
         n_tasks: int,
         device: torch.device,
-        max_norm: float = 1.0,
+        # max_norm: float = 1.0,
         update_weights_every: int = 1,
         optim_niter=20,
     ):
@@ -112,7 +112,7 @@ class NashMTL(WeightMethod):
 
         self.optim_niter = optim_niter
         self.update_weights_every = update_weights_every
-        self.max_norm = max_norm
+        # self.max_norm = max_norm
 
         self.prvs_alpha_param = None
         self.normalization_factor = np.ones((1,))
@@ -268,8 +268,8 @@ class NashMTL(WeightMethod):
         loss.backward()
 
         # make sure the solution for shared params has norm <= self.eps
-        if self.max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(shared_parameters, self.max_norm)
+        # if self.max_norm > 0:
+        #     torch.nn.utils.clip_grad_norm_(shared_parameters, self.max_norm)
 
         return loss, extra_outputs
 
