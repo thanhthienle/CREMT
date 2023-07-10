@@ -21,7 +21,9 @@ conda activate /lustre/scratch/client/vinai/users/thienlt3/envs/cremt
 python3 run_continual.py \
     --logname nash \
     --dataname TACRED \
-    --mtl nashmtl \
+    --mtl cagrad \
+    --tasktype oldnew \
+    --c 0.4 \
     --encoder_epochs 50 --encoder_lr 2e-5 \
     --prompt_pool_epochs 20  --prompt_pool_lr 2e-4 \
     --classifier_epochs 500 --classifier_lr 2e-5 \
