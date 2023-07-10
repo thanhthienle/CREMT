@@ -122,15 +122,6 @@ class Manager(object):
                 total_cur_hits += cur_hits
                 total_hits += total_past_hits + total_cur_hits
 
-                # objectives = torch.stack(
-                #     (past_loss, cur_loss,)
-                # )
-
-                # _, _ = moo_algo_object.backward(
-                #     losses=objectives,
-                #     shared_parameters=modules_params_list
-                # )
-
                 # params update
                 torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.max_grad_norm)
                 optimizer.step()
@@ -143,8 +134,6 @@ class Manager(object):
                     cur_acc = total_cur_hits / cur_sampled,
                     ovr_acc = total_hits / sampled,
                 )
-
-
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         current_relids = self.relids_of_task[-1]
@@ -167,18 +156,7 @@ class Manager(object):
         classifier.train()
         swag_classifier.train()
 
-        modules = [classifier]
-        modules = nn.ModuleList(modules)
-        modules_parameters = modules.parameters()
-
-        modules_params_list = list(modules_parameters)
-
-        optimizer = torch.optim.Adam(
-            [
-                dict(params=modules_parameters, lr=args.classifier_lr),
-                # dict(params=moo_algo_object.parameters(), lr=args.mtl_lr),
-            ],
-        )
+        optimizer = torch.optim.Adam([dict(params=classifier.parameters(), lr=args.classifier_lr),])
 
         def train_data(data_loader_, name=name):
             past_losses, cur_losses = [], []
@@ -194,8 +172,9 @@ class Manager(object):
             total_cur_hits = 0
 
             for data_tuple in td:
-                mtl_losses = []
                 optimizer.zero_grad()
+                classifier.zero_grad()
+                all_shared_grad = []
                 for task_id, (labels, tokens, _) in enumerate(data_tuple):
                     tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
                     targets = labels.type(torch.LongTensor).to(args.device)
@@ -203,8 +182,16 @@ class Manager(object):
 
                     # classifier forward and loss
                     reps = classifier(tokens)
-                    mtl_losses.append(F.cross_entropy(reps, targets, reduction="mean"))
-                    detached_loss = mtl_losses[-1].detach()
+                    task_loss = F.cross_entropy(reps, targets, reduction="mean")
+                    task_loss.backward()
+                    task_shared_grad = []
+                    for param in classifier.parameters():
+                        task_shared_grad.append(param.grad.detach().data.clone().flatten())
+                        param.grad.zero_()
+                    task_shared_grad = torch.cat(task_shared_grad, dim=0)
+                    all_shared_grad.append(task_shared_grad)
+                    
+                    detached_loss = task_loss.detach()
 
                     # prediction
                     _, pred = reps.detach().max(dim=1)
@@ -224,16 +211,20 @@ class Manager(object):
                         past_losses.append(detached_loss.item())
                         past_sampled += len(labels)
                         total_past_hits += hits
-
-                objectives = torch.stack(mtl_losses)
-                # _, _ = moo_algo_object.backward(
-                #     losses=objectives,
-                #     shared_parameters=modules_params_list
-                # )
+    
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)
+                total_length = 0
+                for param in classifier.parameters():
+                    length = param.numel()
+                    param.grad.data = shared_grad[
+                        total_length : total_length + length
+                    ].reshape(param.shape)
+                    total_length += length
 
                 # params update
-                torch.nn.utils.clip_grad_norm_(modules_parameters, args.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.max_grad_norm)
                 optimizer.step()
+                classifier.zero_grad()
                 td.set_postfix(
                     past_loss = np.array(past_losses).mean(),
                     cur_loss = np.array(cur_losses).mean(),
@@ -241,65 +232,6 @@ class Manager(object):
                     ovr_acc = total_hits / sampled,
                 )
 
-            # for (past_labels, past_tokens, _), (cur_labels, cur_tokens, _) in td:
-            #     optimizer.zero_grad()
-
-            #     # batching
-            #     past_sampled += len(past_labels)
-            #     past_targets = past_labels.type(torch.LongTensor).to(args.device)
-            #     past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
-
-            #     cur_sampled += len(cur_labels)
-            #     cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
-            #     cur_tokens = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
-
-            #     sampled += past_sampled + cur_sampled
-
-            #     # classifier forward
-            #     past_reps = classifier(past_tokens)
-            #     cur_reps = classifier(cur_tokens)
-
-            #     # prediction
-            #     past_probs = F.softmax(past_reps, dim=1)
-            #     _, past_pred = past_probs.max(1)
-            #     past_hits = (past_pred == past_targets).float().sum().data.cpu().numpy().item()
-
-            #     cur_probs = F.softmax(cur_reps, dim=1)
-            #     _, cur_pred = cur_probs.max(1)
-            #     cur_hits = (cur_pred == cur_targets).float().sum().data.cpu().numpy().item()
-
-            #     # accuracy
-            #     total_past_hits += past_hits
-            #     total_cur_hits += cur_hits
-            #     total_hits += total_past_hits + total_cur_hits
-
-            #     # loss components
-            #     past_loss = F.cross_entropy(input=past_reps, target=past_targets, reduction="mean")
-            #     cur_loss = F.cross_entropy(input=cur_reps, target=cur_targets, reduction="mean")
-
-            #     past_losses.append(past_loss.item())
-            #     cur_losses.append(cur_loss.item())
-
-            #     objectives = torch.stack(
-            #         (past_loss, cur_loss,)
-            #     )
-
-            #     _, _ = nash_mtl_object.backward(
-            #         losses=objectives,
-            #         shared_parameters=modules_params_list
-            #     )
-
-            #     # params update
-            #     # torch.nn.utils.clip_grad_norm_(modules_parameters, args.max_grad_norm)
-            #     optimizer.step()
-
-            #     # display
-            #     td.set_postfix(
-            #         past_loss = np.array(past_losses).mean(),
-            #         cur_loss = np.array(cur_losses).mean(),
-            #         cur_acc = total_cur_hits / cur_sampled,
-            #         ovr_acc = total_hits / sampled,
-            #     )
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             combined_data_loader = zip(
