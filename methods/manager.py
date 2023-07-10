@@ -62,7 +62,7 @@ class Manager(object):
 
                 past_labels, past_tokens, _ = past_batch
                 cur_labels, cur_tokens, _ = current_batch
-                
+
                 # batching
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
@@ -105,7 +105,7 @@ class Manager(object):
                         total_length : total_length + length
                     ].reshape(param.shape)
                     total_length += length
-                
+
                 past_losses.append(past_loss.item())
                 cur_losses.append(cur_loss.item())
 
@@ -144,7 +144,7 @@ class Manager(object):
                     cur_acc = total_cur_hits / cur_sampled,
                     ovr_acc = total_hits / sampled,
                 )
-            
+
 
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
@@ -163,7 +163,7 @@ class Manager(object):
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
-        
+
     def _train_mtl_classifier_ntask(self, args, classifier, swag_classifier, replayed_epochs, name=""):
         classifier.train()
         swag_classifier.train()
@@ -206,7 +206,7 @@ class Manager(object):
                     reps = classifier(tokens)
                     mtl_losses.append(F.cross_entropy(reps, targets, reduction="mean"))
                     detached_loss = mtl_losses[-1].detach()
-                    
+
                     # prediction
                     _, pred = reps.detach().max(dim=1)
                     hits = (pred == targets.detach()).float().sum().data.cpu().numpy().item()
