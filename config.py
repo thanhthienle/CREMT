@@ -61,7 +61,7 @@ class Param:
 
         # seed
         parser.add_argument("--seed", default=2021, type=int)
-        
+
         # max gradient norm
         parser.add_argument("--max_grad_norm", default=10.0, type=float)
 
