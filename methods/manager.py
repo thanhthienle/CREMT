@@ -142,7 +142,7 @@ class Manager(object):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             past_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in past_relids], shuffle=True)
             current_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
-            combined_data_loader = zip(past_data_loader, current_data_loader)
+            combined_data_loader = zip(past_data_loader, cycle(current_data_loader))
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
@@ -727,7 +727,8 @@ class Manager(object):
                 for x in test_cur:
                     print(x)
                     writer.write(f"{x}\n")
-                print("arverages:")
+                print("averages:")
+                writer.write("averages:\n")
                 for x in test_total:
                     print(x)
                     writer.write(f"{x}\n")
