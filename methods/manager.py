@@ -605,16 +605,8 @@ class Manager(object):
             all_tasks = []
             seen_data = {}
 
-            # Current relations ids
+            # Relation ids of every task
             self.relids_of_task = []
-
-            # task predictor
-            task_predictor = Classifier(args=args).to(args.device)
-            swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
-
-            # classifier
-            prompted_classifier = Classifier(args=args).to(args.device)
-            swag_prompted_classifier = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
 
             for steps, (training_data, valid_data, test_data, current_relations, historic_test_data, seen_relations) in enumerate(sampler):
                 writer = open(f"live_{args.logname}", "a")
@@ -681,6 +673,14 @@ class Manager(object):
                 # all
                 all_train_tasks.append(cur_training_data)
                 all_tasks.append(cur_test_data)
+
+                # task predictor
+                task_predictor = Classifier(args=args).to(args.device)
+                swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
+
+                # classifier
+                prompted_classifier = Classifier(args=args).to(args.device)
+                swag_prompted_classifier = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
 
                 # train
                 if steps == 0:
