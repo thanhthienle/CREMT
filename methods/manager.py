@@ -582,10 +582,10 @@ class Manager(object):
             self.replayed_data = [[] for e_id in range(args.replay_epochs)]
 
             # random seed
-            random.seed(args.seed + seed_id*100)
+            random.seed(args.seed + seed_id*300)
 
             # sampler
-            sampler = data_sampler(args=args, seed=args.seed + seed_id*100)
+            sampler = data_sampler(args=args, seed=args.seed + seed_id*300)
             self.rel2id = sampler.rel2id
             self.id2rel = sampler.id2rel
 
