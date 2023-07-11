@@ -73,10 +73,12 @@ class BertRelationEncoder(nn.Module):
             raise Exception("Wrong encoding.")
         
     def freeze_embeddings(self):
-        for param in self.encoder.embeddings.parameters():
-            param.requires_grad = False
-        for param in self.encoder.first_task_embeddings.parameters():
-            param.requires_grad = False
+        for param_ in self.encoder.embeddings.parameters():
+            param_.requires_grad = False
+        for param_ in self.encoder.first_task_embeddings.parameters():
+            param_.requires_grad = False
+        for param_ in self.encoder.embeddings.parameters():
+            param_.requires_grad = False
 
     def forward(self, input_ids, prompt_pool=None, x_key=None, prompt_pools=None):
         out = dict()
