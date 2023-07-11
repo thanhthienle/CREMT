@@ -357,8 +357,9 @@ class Manager(object):
         for e_id in range(args.encoder_epochs):
             train_data(data_loader, f"train_embeddings_epoch_{e_id + 1}", e_id)
 
-    def train_prompt_pool(self, args, encoder, prompt_pool, classifier, training_data, task_id):
+    def train_prompt_pool(self, args, encoder, prompt_pool, training_data, task_id):
         encoder.eval()
+        classifier = Classifier(args=args).to(args.device)
         classifier.train()
         modules = [classifier, prompt_pool]
         if task_id == 0 and args.encoder_seprarate_embeddings == True:
@@ -647,7 +648,7 @@ class Manager(object):
 
                 # new prompt pool
                 self.prompt_pools.append(Prompt(args).to(args.device))
-                self.train_prompt_pool(args, encoder, self.prompt_pools[-1], prompted_classifier, cur_training_data, task_id=steps)
+                self.train_prompt_pool(args, encoder, self.prompt_pools[-1], cur_training_data, task_id=steps)
 
                 # memory
                 for i, relation in enumerate(current_relations):
