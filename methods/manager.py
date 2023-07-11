@@ -190,7 +190,7 @@ class Manager(object):
                         param.grad.zero_()
                     task_shared_grad = torch.cat(task_shared_grad, dim=0)
                     all_shared_grad.append(task_shared_grad)
-                    
+
                     detached_loss = task_loss.detach()
 
                     # prediction
@@ -211,7 +211,7 @@ class Manager(object):
                         past_losses.append(detached_loss.item())
                         past_sampled += len(labels)
                         total_past_hits += hits
-    
+
                 shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)
                 total_length = 0
                 for param in classifier.parameters():
@@ -754,7 +754,7 @@ class NashManager(object):
             [
                 dict(params=classifier.parameters(), lr=args.classifier_lr),
                 dict(params=nash_object.parameters(), lr=args.mtl_lr),
-            ]                     
+            ]
         )
 
         def train_data(data_loader_, name=name):
@@ -775,7 +775,7 @@ class NashManager(object):
 
                 past_labels, past_tokens, _ = past_batch
                 cur_labels, cur_tokens, _ = current_batch
-                
+
                 # batching
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
@@ -890,7 +890,7 @@ class NashManager(object):
                     reps = classifier(tokens)
                     mtl_losses.append(F.cross_entropy(reps, targets, reduction="mean"))
                     detached_loss = mtl_losses[-1].detach()
-                    
+
                     # prediction
                     _, pred = reps.detach().max(dim=1)
                     hits = (pred == targets.detach()).float().sum().data.cpu().numpy().item()
