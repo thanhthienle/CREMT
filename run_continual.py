@@ -8,6 +8,8 @@ from methods.manager import Manager, NashManager
 def run(args):
     print(f"Hyper-parameter configurations:")
     print(yaml.dump(args.__dict__, sort_keys=True, indent=4))
+    with open(f"live_{args.logname}", "a") as writer:
+        writer.write(yaml.dump(args.__dict__, sort_keys=True, indent=4))
 
     setup_seed(args.seed)
     if args.mtl == "nashmtl":
