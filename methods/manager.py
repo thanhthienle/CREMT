@@ -17,7 +17,6 @@ import torch.nn.functional as F
 import copy
 import random
 import numpy as np
-from itertools import cycle
 
 from sklearn.mixture import GaussianMixture
 
@@ -137,12 +136,18 @@ class Manager(object):
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         current_relids = self.relids_of_task[-1]
+        num_oldtask = len(self.relids_of_task) - 1
+        num_oldtask_samples = int(args.replay_s_e_e / num_oldtask)
 
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
-            past_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in past_relids], shuffle=True)
-            current_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
-            combined_data_loader = zip(past_data_loader, cycle(current_data_loader))
+            past_data = []
+            for rel_id in past_relids:
+                past_data.extend(random.sample([instance for instance in replay_data if instance["relation"] == rel_id], k=num_oldtask_samples))
+            combined_data_loader = zip(
+                get_data_loader(args, past_data, shuffle=True),
+                get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
+            )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
@@ -838,12 +843,18 @@ class NashManager(object):
             
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         current_relids = self.relids_of_task[-1]
+        num_oldtask = len(self.relids_of_task) - 1
+        num_oldtask_samples = int(args.replay_s_e_e / num_oldtask)
 
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
-            past_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in past_relids], shuffle=True)
-            current_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
-            combined_data_loader = zip(past_data_loader, cycle(current_data_loader))
+            past_data = []
+            for rel_id in past_relids:
+                past_data.extend(random.sample([instance for instance in replay_data if instance["relation"] == rel_id], k=num_oldtask_samples))
+            combined_data_loader = zip(
+                get_data_loader(args, past_data, shuffle=True),
+                get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
+            )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
