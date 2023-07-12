@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
 #SBATCH --job-name=gpt # create a short name for your job
-#SBATCH --output=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_ntask_slurm_%A.out # create a output file
-#SBATCH --error=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/nash_ntask_slurm_%A.err # create a error file
+#SBATCH --output=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/augd_oldnew_23_udsmpling_%A.out # create a output file
+#SBATCH --error=/lustre/scratch/client/vinai/users/thienlt3/asa/mtl/augd_oldnew_23_udsmpling_%A.err # create a error file
 #SBATCH --partition=applied # choose partition
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=32
@@ -19,14 +19,15 @@ eval "$(conda shell.bash hook)"
 conda activate /lustre/scratch/client/vinai/users/thienlt3/envs/cremt
 
 python3 run_continual.py \
-    --logname nash \
+    --logname augd_3_seed_2121_2221 \
     --dataname TACRED \
-    --mtl cagrad \
+    --mtl augd \
     --tasktype oldnew \
     --c 0.4 \
     --encoder_epochs 50 --encoder_lr 2e-5 \
     --prompt_pool_epochs 20  --prompt_pool_lr 2e-4 \
     --classifier_epochs 500 --classifier_lr 2e-5 \
     --replay_epochs 100 \
-    --total_rounds 1 \
+    --total_rounds 2 \
+    --seed 2121 \
     --gpu 0
