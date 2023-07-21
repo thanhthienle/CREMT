@@ -156,9 +156,16 @@ class Manager(object):
                     ovr_acc = total_hits / sampled,
                 )
 
+        # Validation set
+        validation_data = convert_data_tokens_to_queries(
+            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        )
+
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
 
+    
+        consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             past_data = []
@@ -178,6 +185,14 @@ class Manager(object):
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
+
+            valid_acc = self._validation(args, classifier, valid_data=validation_data)
+            if valid_acc >= 95.0:
+                consecutive_satisfaction += 1
+            if consecutive_satisfaction > 5:
+                print("EARLY STOP!!!")
+                break
+
 
     def _train_mtl_classifier_oldnew(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         classifier.train()
@@ -518,6 +533,11 @@ class Manager(object):
 
         optimizer = torch.optim.Adam([{"params": modules_parameters, "lr": args.classifier_lr}])
 
+        # Validation set
+        validation_data = convert_data_tokens_to_queries(
+            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        )
+
         def train_data(data_loader_, name=name):
             losses = []
             accuracies = []
@@ -764,6 +784,33 @@ class Manager(object):
         return out
 
     @torch.no_grad()
+    def _validation(self, args, classifier, valid_data):
+        classifier.eval()
+
+        valid_data_loader = get_data_loader(args, valid_data, shuffle=False)
+        td = tqdm(valid_data_loader, desc="Validating")
+
+        sampled = 0
+        total_hits = 0
+
+        # testing
+        for (labels, tokens, _) in td:
+            sampled += len(labels)
+            targets = labels.type(torch.LongTensor).to(args.device)
+            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+
+            # prediction
+            reps = classifier(tokens)
+            _, pred = reps.max(1)
+
+            # accuracy_0
+            total_hits += (pred == targets).float().sum().data.cpu().numpy().item()
+
+            # display
+            td.set_postfix(acc=np.round(total_hits / sampled, 3))
+        return total_hits / sampled
+
+    @torch.no_grad()
     def evaluate_strict_model(self, args, encoder, classifier, test_data, name, task_id):
         # models evaluation mode
         encoder.eval()
@@ -795,42 +842,6 @@ class Manager(object):
 
             # accuracy_0
             total_hits[0] += (pred == targets).float().sum().data.cpu().numpy().item()
-
-            # # pool_ids
-            # pool_ids = [self.id2taskid[int(x)] for x in pred]
-            # for i, pool_id in enumerate(pool_ids):
-            #     total_hits[1] += pool_id == self.id2taskid[int(labels[i])]
-
-            # # get pools
-            # prompt_pools = [self.prompt_pools[x] for x in pool_ids]
-
-            # # prompted encoder forward
-            # prompted_encoder_out = encoder(tokens, None, encoder_out["x_encoded"], prompt_pools)
-
-            # # prediction
-            # reps = prompted_classifier(prompted_encoder_out["x_encoded"])
-            # probs = F.softmax(reps, dim=1)
-            # _, pred = probs.max(1)
-
-            # # accuracy_2
-            # total_hits[2] += (pred == targets).float().sum().data.cpu().numpy().item()
-
-            # # pool_ids
-            # pool_ids = [self.id2taskid[int(x)] for x in labels]
-
-            # # get pools
-            # prompt_pools = [self.prompt_pools[x] for x in pool_ids]
-
-            # # prompted encoder forward
-            # prompted_encoder_out = encoder(tokens, None, encoder_out["x_encoded"], prompt_pools)
-
-            # # prediction
-            # reps = prompted_classifier(prompted_encoder_out["x_encoded"])
-            # probs = F.softmax(reps, dim=1)
-            # _, pred = probs.max(1)
-
-            # # accuracy_3
-            # total_hits[3] += (pred == targets).float().sum().data.cpu().numpy().item()
 
             # display
             td.set_postfix(acc=np.round(total_hits / sampled, 3))
