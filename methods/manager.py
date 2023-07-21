@@ -67,9 +67,9 @@ class Manager(object):
                 # batching
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
+                past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
                 with torch.no_grad():
                     past_distill_targets = F.softmax(past_classifier(past_tokens), dim=1, dtype=torch.float32)
-                past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
 
                 cur_sampled += len(cur_labels)
                 cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
