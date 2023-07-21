@@ -186,7 +186,7 @@ class Manager(object):
                 bn_update(data_loader, swag_classifier)
 
             valid_acc = self._validation(args, classifier, valid_data=validation_data)
-            if valid_acc >= 95.0:
+            if valid_acc >= 0.95:
                 consecutive_satisfaction += 1
             else: consecutive_satisfaction = 0
 
@@ -592,7 +592,7 @@ class Manager(object):
                 bn_update(data_loader, swag_classifier)
 
             valid_loss = self._validation(args, classifier, validation_data)
-            if valid_loss >= 95.0:
+            if valid_loss >= 0.95:
                 consecutive_satisfaction += 1
             else: consecutive_satisfaction = 0
             
