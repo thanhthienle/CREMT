@@ -158,11 +158,7 @@ class Manager(object):
                 )
 
         # Validation set
-        validation_data = convert_data_tokens_to_queries(
-            args,
-            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]],
-            encoder
-        )
+        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
@@ -581,11 +577,7 @@ class Manager(object):
                 td.set_postfix(loss=np.array(losses).mean(), acc=total_hits / sampled)
 
         # Validation set
-        validation_data = convert_data_tokens_to_queries(
-            args,
-            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]],
-            encoder
-        )
+        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
 
         consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
