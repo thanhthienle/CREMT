@@ -19,6 +19,10 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
+def flatten_list(nested_list):
+    return [item for small_list in nested_list for item in small_list]
+
+
 def flatten(lst):
     tmp = [i.contiguous().view(-1, 1) for i in lst]
     return torch.cat(tmp).view(-1)
