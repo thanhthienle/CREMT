@@ -53,12 +53,13 @@ class Manager(object):
         else:
             self.train_classifier = self._train_normal_classifier
 
-    def _train_mtl_classifier_distill(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
-        past_classifier = copy.deepcopy(classifier)
+    def _train_mtl_classifier_distill(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+        encoder.eval()
         classifier.train()
-        past_classifier.eval()
         swag_classifier.train()
-
+        past_classifier = copy.deepcopy(classifier)
+        past_classifier.eval()
+        
         optimizer = torch.optim.Adam([dict(params=classifier.parameters(), lr=args.classifier_lr),])
 
         def train_data(data_loader_, name=name):
@@ -158,7 +159,9 @@ class Manager(object):
 
         # Validation set
         validation_data = convert_data_tokens_to_queries(
-            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+            args,
+            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]],
+            encoder
         )
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
@@ -189,12 +192,15 @@ class Manager(object):
             valid_acc = self._validation(args, classifier, valid_data=validation_data)
             if valid_acc >= 95.0:
                 consecutive_satisfaction += 1
+            else: consecutive_satisfaction = 0
+
             if consecutive_satisfaction > 5:
                 print("EARLY STOP!!!")
                 break
 
 
-    def _train_mtl_classifier_oldnew(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+    def _train_mtl_classifier_oldnew(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+        encoder.eval()
         classifier.train()
         swag_classifier.train()
 
@@ -315,7 +321,8 @@ class Manager(object):
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-    def _train_mtl_classifier_ntask(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+    def _train_mtl_classifier_ntask(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+        encoder.eval()
         classifier.train()
         swag_classifier.train()
 
@@ -414,7 +421,8 @@ class Manager(object):
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-    def _train_mtl_classifier_ratio(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+    def _train_mtl_classifier_ratio(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+        encoder.eval()
         classifier.train()
         swag_classifier.train()
 
@@ -523,7 +531,8 @@ class Manager(object):
         self.past_alphas = [alpha * alpha_old for alpha in self.past_alphas]
         self.past_alphas.append(alpha_current)
 
-    def _train_normal_classifier(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+    def _train_normal_classifier(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
+        encoder.train()
         classifier.train()
         swag_classifier.train()
 
@@ -532,11 +541,6 @@ class Manager(object):
         modules_parameters = modules.parameters()
 
         optimizer = torch.optim.Adam([{"params": modules_parameters, "lr": args.classifier_lr}])
-
-        # Validation set
-        validation_data = convert_data_tokens_to_queries(
-            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
-        )
 
         def train_data(data_loader_, name=name):
             losses = []
@@ -576,6 +580,14 @@ class Manager(object):
                 # display
                 td.set_postfix(loss=np.array(losses).mean(), acc=total_hits / sampled)
 
+        # Validation set
+        validation_data = convert_data_tokens_to_queries(
+            args,
+            [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]],
+            encoder
+        )
+
+        consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             all_data = [instance for instance in replay_data if instance["relation"] in flatten_list(self.relids_of_task[:-1])]
@@ -586,6 +598,16 @@ class Manager(object):
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
+
+            valid_loss = self._validation(args, classifier, validation_data)
+            if valid_loss >= 95.0:
+                consecutive_satisfaction += 1
+            else: consecutive_satisfaction = 0
+            
+            if consecutive_satisfaction >= 5:
+                print("EARLY STOP!!!")
+                break
+            
 
     def train_embeddings(self, args, encoder, training_data, task_id):
         encoder.train()
