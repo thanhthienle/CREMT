@@ -965,9 +965,9 @@ class Manager(object):
 
                 # train
                 if steps == 0:
-                    self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
+                    self._train_normal_classifier(args, encoder, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
                 else:
-                    self.train_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
+                    self.train_classifier(args, encoder, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
 
                 # prediction
                 print("===NON-SWAG===")
