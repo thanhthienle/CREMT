@@ -27,7 +27,8 @@ from tqdm import tqdm, trange
 def convert_data_tokens_to_queries(args, data, encoder):
     data_loader = get_data_loader(args, data, shuffle=False)
     queries = []
-    for (labels, tokens, _) in data_loader:
+    print("Forward training data...")
+    for (labels, tokens, _) in tqdm(data_loader):
         tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
         queries.append(encoder(tokens)["x_encoded"])
     queries = torch.cat(queries, dim=0).cpu()
@@ -913,8 +914,6 @@ class Manager(object):
                 # memory
                 for i, relation in enumerate(current_relations):
                     self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
-
-                    print(f"replaying key {relation}")
                     rel_id = self.rel2id[relation]
                     replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
                     for e_id in range(args.replay_epochs):
