@@ -23,6 +23,21 @@ from sklearn.mixture import GaussianMixture
 from tqdm import tqdm, trange
 
 
+@torch.no_grad()
+def convert_data_tokens_to_queries(args, data, encoder):
+    data_loader = get_data_loader(args, data, shuffle=False)
+    queries = []
+    for (labels, tokens, _) in data_loader:
+        tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+        queries.append(encoder(tokens)["x_encoded"])
+    queries = torch.cat(queries, dim=0)
+
+    new_data = data
+    for i in range(len(new_data)):
+        new_data[i]["tokens"] = queries[i]
+    return new_data
+
+
 class Manager(object):
     def __init__(self, args):
         super().__init__()
@@ -37,7 +52,7 @@ class Manager(object):
         else:
             self.train_classifier = self._train_normal_classifier
 
-    def _train_mtl_classifier_distill(self, args, classifier, swag_classifier, replayed_epochs, name=""):
+    def _train_mtl_classifier_distill(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         past_classifier = copy.deepcopy(classifier)
         classifier.train()
         past_classifier.eval()
@@ -57,29 +72,30 @@ class Manager(object):
             total_past_hits = 0
             total_cur_hits = 0
 
+            current_queries_data = []
             for past_batch, current_batch in td:
                 optimizer.zero_grad()
                 classifier.zero_grad()
 
-                past_labels, past_tokens, _ = past_batch
+                past_labels, past_queries, _ = past_batch
                 cur_labels, cur_tokens, _ = current_batch
 
                 # batching
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
-                past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
+                past_queries = torch.stack([x.to(args.device) for x in past_queries], dim=0)
                 with torch.no_grad():
-                    past_distill_targets = F.softmax(past_classifier(past_tokens), dim=1, dtype=torch.float32)
+                    past_distill_targets = F.softmax(past_classifier(past_queries), dim=1, dtype=torch.float32)
 
                 cur_sampled += len(cur_labels)
                 cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
-                cur_tokens = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
+                cur_queries = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
 
                 sampled += past_sampled + cur_sampled
 
                 # classifier forward
-                cur_reps = classifier(cur_tokens)
-                past_reps = classifier(past_tokens)
+                cur_reps = classifier(cur_queries)
+                past_reps = classifier(past_queries)
 
                 # loss components
                 distill_loss = F.cross_entropy(input=past_reps, target=past_distill_targets, reduction="mean")
@@ -140,7 +156,6 @@ class Manager(object):
                 )
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        current_relids = self.relids_of_task[-1]
         num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
 
         for e_id in range(args.classifier_epochs):
@@ -150,18 +165,20 @@ class Manager(object):
                 past_data.extend(random.sample([instance for instance in replay_data if instance["relation"] == rel_id], k=num_oldtask_samples))
             combined_data_loader = zip(
                 get_data_loader(args, past_data, shuffle=True),
-                get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
+                get_data_loader(args, current_task_data, shuffle=True)
             )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
-            data_loader = get_data_loader(args, replay_data, shuffle=True)
+            all_data = past_data
+            all_data.extend(current_task_data)
+            data_loader = get_data_loader(args, all_data, shuffle=True)
             swag_classifier.collect_model(classifier)
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-    def _train_mtl_classifier_oldnew(self, args, classifier, swag_classifier, replayed_epochs, name=""):
+    def _train_mtl_classifier_oldnew(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         classifier.train()
         swag_classifier.train()
 
@@ -183,24 +200,24 @@ class Manager(object):
                 optimizer.zero_grad()
                 classifier.zero_grad()
 
-                past_labels, past_tokens, _ = past_batch
+                past_labels, past_queries, _ = past_batch
                 cur_labels, cur_tokens, _ = current_batch
 
                 # batching
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
-                past_tokens = torch.stack([x.to(args.device) for x in past_tokens], dim=0)
+                past_queries = torch.stack([x.to(args.device) for x in past_queries], dim=0)
 
                 cur_sampled += len(cur_labels)
                 cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
-                cur_tokens = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
+                cur_queries = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
 
                 sampled += past_sampled + cur_sampled
 
                 # classifier forward
-                past_reps = classifier(past_tokens)
-                cur_reps = classifier(cur_tokens)
-
+                cur_reps = classifier(cur_queries)
+                past_reps = classifier(past_queries)
+                
                 # loss components
                 past_loss = F.cross_entropy(input=past_reps, target=past_targets, reduction="mean")
                 cur_loss = F.cross_entropy(input=cur_reps, target=cur_targets, reduction="mean")
@@ -260,7 +277,6 @@ class Manager(object):
                 )
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        current_relids = self.relids_of_task[-1]
         num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
 
         for e_id in range(args.classifier_epochs):
@@ -270,18 +286,20 @@ class Manager(object):
                 past_data.extend(random.sample([instance for instance in replay_data if instance["relation"] == rel_id], k=num_oldtask_samples))
             combined_data_loader = zip(
                 get_data_loader(args, past_data, shuffle=True),
-                get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
+                get_data_loader(args, current_task_data, shuffle=True)
             )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
-            data_loader = get_data_loader(args, replay_data, shuffle=True)
+            all_data = past_data
+            all_data.extend(current_task_data)
+            data_loader = get_data_loader(args, all_data, shuffle=True)
             swag_classifier.collect_model(classifier)
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-    def _train_mtl_classifier_ntask(self, args, classifier, swag_classifier, replayed_epochs, name=""):
+    def _train_mtl_classifier_ntask(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         classifier.train()
         swag_classifier.train()
 
@@ -304,6 +322,7 @@ class Manager(object):
                 optimizer.zero_grad()
                 classifier.zero_grad()
                 all_shared_grad = []
+                last_task_id = len(data_tuple) - 1
                 for task_id, (labels, tokens, _) in enumerate(data_tuple):
                     tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
                     targets = labels.type(torch.LongTensor).to(args.device)
@@ -327,7 +346,7 @@ class Manager(object):
                     hits = (pred == targets.detach()).float().sum().data.cpu().numpy().item()
                     total_hits += hits
 
-                    if task_id == len(data_tuple) - 1:
+                    if task_id == last_task_id:
                         cur_losses.append(detached_loss.item())
                         cur_sampled += len(labels)
                         total_cur_hits += hits
@@ -361,144 +380,25 @@ class Manager(object):
                     ovr_acc = total_hits / sampled,
                 )
 
+        past_rel_ids = self.relids_of_task[:-1]
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             combined_data_loader = zip(
-                *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in self.relids_of_task]
+                *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in past_rel_ids],
+                get_data_loader(args, current_task_data, shuffle=True)
             )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # SWAG
-            data_loader = get_data_loader(args, replay_data, shuffle=True)
+            past_data = [instance for instance in replay_data if instance["relation"] in flatten_list(past_rel_ids)]
+            past_data.extend(current_task_data)
+            data_loader = get_data_loader(args, past_data, shuffle=True)
             swag_classifier.collect_model(classifier)
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
-    def _train_mtl_classifier_max5(self, args, classifier, swag_classifier, replayed_epochs, name=""):
-        classifier.train()
-        swag_classifier.train()
-
-        optimizer = torch.optim.Adam([dict(params=classifier.parameters(), lr=args.classifier_lr),])
-
-        def train_data(data_loader_, name=name):
-            past_losses, cur_losses = [], []
-            accuracies = []
-            td = tqdm(data_loader_, desc=name)
-
-            sampled = 0
-            past_sampled = 0
-            cur_sampled = 0
-
-            total_hits = 0
-            total_past_hits = 0
-            total_cur_hits = 0
-
-            for data_tuple in td:
-                optimizer.zero_grad()
-                classifier.zero_grad()
-                all_shared_grad = []
-                for task_id, (labels, tokens, _) in enumerate(data_tuple):
-                    tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-                    targets = labels.type(torch.LongTensor).to(args.device)
-                    sampled += len(labels)
-
-                    # classifier forward and loss
-                    reps = classifier(tokens)
-                    task_loss = F.cross_entropy(reps, targets, reduction="mean")
-                    task_loss.backward()
-                    task_shared_grad = []
-                    for param in classifier.parameters():
-                        task_shared_grad.append(param.grad.detach().data.clone().flatten())
-                        param.grad.zero_()
-                    task_shared_grad = torch.cat(task_shared_grad, dim=0)
-                    all_shared_grad.append(task_shared_grad)
-
-                    detached_loss = task_loss.detach()
-
-                    # prediction
-                    _, pred = reps.detach().max(dim=1)
-                    hits = (pred == targets.detach()).float().sum().data.cpu().numpy().item()
-                    total_hits += hits
-
-                    if task_id == len(data_tuple) - 1:
-                        cur_losses.append(detached_loss.item())
-                        cur_sampled += len(labels)
-                        total_cur_hits += hits
-                        with open("debug", "a") as writer:
-                            writer.write(str(pred))
-                            writer.write("\n")
-                            writer.write(str(targets.detach()))
-                            writer.write("\n\n")
-                    else:
-                        past_losses.append(detached_loss.item())
-                        past_sampled += len(labels)
-                        total_past_hits += hits
-
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)["updating_grad"]
-                total_length = 0
-                for param in classifier.parameters():
-                    length = param.numel()
-                    param.grad.data = shared_grad[
-                        total_length : total_length + length
-                    ].reshape(param.shape)
-                    total_length += length
-
-                # params update
-                torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.max_grad_norm)
-                optimizer.step()
-                classifier.zero_grad()
-                td.set_postfix(
-                    past_loss = np.array(past_losses).mean(),
-                    cur_loss = np.array(cur_losses).mean(),
-                    cur_acc = total_cur_hits / cur_sampled,
-                    ovr_acc = total_hits / sampled,
-                )
-
-        num_task_sofar = len(self.relids_of_task)
-        if num_task_sofar > 5:
-            beginning_cluster_size = num_task_sofar - 4
-            num_sample = args.replay_s_e_e // beginning_cluster_size
-            residual = args.replay_s_e_e % beginning_cluster_size
-            for e_id in range(args.classifier_epochs):
-                replay_data = replayed_epochs[e_id % args.replay_epochs]
-                beginning_cluster_data = []
-                for task, task_rels in enumerate(self.relids_of_task[:beginning_cluster_size]):
-                    true_num_sample = num_sample + 1 if beginning_cluster_size - task <= residual else num_sample
-                    beginning_cluster_data.extend(
-                        random.sample(
-                            [instance for instance in replay_data if instance["relation"] in task_rels],
-                            k=true_num_sample
-                        )
-                    )
-                combined_data_loader = zip(
-                    get_data_loader(args, beginning_cluster_data, shuffle=True),
-                    *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in self.relids_of_task[5:]]
-                )
-                train_data(combined_data_loader, f"{name}{e_id + 1}")
-                # SWAG
-                data_loader = get_data_loader(args, replay_data, shuffle=True)
-                swag_classifier.collect_model(classifier)
-                if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
-                    swag_classifier.sample(0.0)
-                    bn_update(data_loader, swag_classifier)
-
-        else:
-            for e_id in range(args.classifier_epochs):
-                replay_data = replayed_epochs[e_id % args.replay_epochs]
-                combined_data_loader = zip(
-                    *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in self.relids_of_task]
-                )
-                train_data(combined_data_loader, f"{name}{e_id + 1}")
-
-                # SWAG
-                data_loader = get_data_loader(args, replay_data, shuffle=True)
-                swag_classifier.collect_model(classifier)
-                if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
-                    swag_classifier.sample(0.0)
-                    bn_update(data_loader, swag_classifier)
-
-    def _train_mtl_classifier_ratio(self, args, classifier, swag_classifier, replayed_epochs, name=""):
+    def _train_mtl_classifier_ratio(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         classifier.train()
         swag_classifier.train()
 
@@ -586,15 +486,19 @@ class Manager(object):
             return local_alpha_old, local_alpha_current
 
         alpha_old, alpha_old = 1., 1.
+        past_rel_ids = self.relids_of_task[:-1]
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             combined_data_loader = zip(
-                *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in self.relids_of_task]
+                *[get_data_loader(args, [instance for instance in replay_data if instance["relation"] in task_relids], shuffle=True) for task_relids in past_rel_ids],
+                get_data_loader(args, current_task_data, shuffle=True)
             )
             alpha_old, alpha_current = train_data(combined_data_loader, e_id, f"{name}{e_id + 1}")
 
             # SWAG
-            data_loader = get_data_loader(args, replay_data, shuffle=True)
+            all_data = [instance for instance in replay_data if instance["relation"] in flatten_list(past_rel_ids)]
+            all_data.extend(current_task_data)
+            data_loader = get_data_loader(args, all_data, shuffle=True)
             swag_classifier.collect_model(classifier)
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
                 swag_classifier.sample(0.0)
@@ -603,7 +507,7 @@ class Manager(object):
         self.past_alphas = [alpha * alpha_old for alpha in self.past_alphas]
         self.past_alphas.append(alpha_current)
 
-    def _train_normal_classifier(self, args, classifier, swag_classifier, replayed_epochs, name=""):
+    def _train_normal_classifier(self, args, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         classifier.train()
         swag_classifier.train()
 
@@ -652,7 +556,10 @@ class Manager(object):
                 td.set_postfix(loss=np.array(losses).mean(), acc=total_hits / sampled)
 
         for e_id in range(args.classifier_epochs):
-            data_loader = get_data_loader(args, replayed_epochs[e_id % args.replay_epochs], shuffle=True)
+            replay_data = replayed_epochs[e_id % args.replay_epochs]
+            all_data = [instance for instance in replay_data if instance["relation"] in flatten_list(self.relids_of_task[:-1])]
+            all_data.extend(current_task_data)
+            data_loader = get_data_loader(args, all_data, shuffle=True)
             train_data(data_loader, f"{name}{e_id + 1}")
             swag_classifier.collect_model(classifier)
             if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
@@ -955,9 +862,6 @@ class Manager(object):
             # classifier
             task_predictor = Classifier(args=args).to(args.device)
 
-            # pools
-            # self.prompt_pools = []
-
             # initialize memory
             self.memorized_samples = {}
 
@@ -1006,31 +910,19 @@ class Manager(object):
                     encoder.encoder.first_task_embeddings.eval()
                     encoder.freeze_embeddings()
 
-                # # new prompt pool
-                # self.prompt_pools.append(Prompt(args).to(args.device))
-                # self.train_prompt_pool(args, encoder, self.prompt_pools[-1], cur_training_data, task_id=steps)
-
                 # memory
                 for i, relation in enumerate(current_relations):
-                    # self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, self.prompt_pools[steps], training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
                     self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
 
-                # replay data for classifier
-                # for relation in current_relations:
-                #     print(f"replaying data {relation}")
-                #     rel_id = self.rel2id[relation]
-                #     replay_data = self.memorized_samples[rel_id]["replay"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
-                #     for e_id in range(args.replay_epochs):
-                #         for x_encoded in replay_data[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
-                #             self.replayed_data[e_id].append({"relation": rel_id, "tokens": x_encoded})
-
-                for relation in current_relations:
                     print(f"replaying key {relation}")
                     rel_id = self.rel2id[relation]
                     replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
                     for e_id in range(args.replay_epochs):
                         for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
                             self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
+
+                # Current task data
+                cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
 
                 # all
                 all_train_tasks.append(cur_training_data)
@@ -1039,17 +931,11 @@ class Manager(object):
                 # swag task predictor
                 swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
 
-                # # classifier
-                # prompted_classifier = Classifier(args=args).to(args.device)
-                # swag_prompted_classifier = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
-
                 # train
                 if steps == 0:
-                    self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, "train_task_predictor_epoch_")
-                    # self._train_normal_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, "train_prompted_classifier_epoch_")
+                    self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
                 else:
-                    self.train_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, "train_task_predictor_epoch_")
-                    # self.train_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, "train_prompted_classifier_epoch_")
+                    self.train_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
 
                 # prediction
                 print("===NON-SWAG===")
