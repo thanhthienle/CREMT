@@ -28,7 +28,7 @@ def PCGrad(grads: List[Tuple[torch.Tensor]], reduction: str = "sum") -> torch.Te
     if reduction == "mean":
         merged_grad = [g / len(grads) for g in merged_grad]
 
-    return merged_grad
+    return dict(updating_grad = merged_grad)
 
 
 def CAGrad(grads, alpha=0.5, rescale=1):
@@ -60,11 +60,11 @@ def CAGrad(grads, alpha=0.5, rescale=1):
     lmbda = c / (gw_norm + 1e-8)
     g = grads.mean(1) + lmbda * gw
     if rescale == 0:
-        return g
+        return dict(updating_grad = g)
     elif rescale == 1:
-        return g / (1 + alpha ** 2)
+        return dict(updating_grad = g / (1 + alpha ** 2))
     else:
-        return g / (1 + alpha)
+        return dict(updating_grad = g / (1 + alpha))
 
 
 def IMTL(grads_list):
@@ -116,7 +116,9 @@ def IMTL(grads_list):
     alpha = torch.cat(
         (torch.tensor(1 - alpha_.sum(), device=norm_term.device).unsqueeze(-1), alpha_)
     )
-    return sum([alpha[i] * grads[i] for i in range(len(grads_list))])
+    return dict(
+        updating_grad = sum([alpha[i] * grads[i] for i in range(len(grads_list))])
+    )
 
 
 def AUGD(grads_list, unused_shit):
@@ -161,7 +163,10 @@ def AUGD(grads_list, unused_shit):
     )
     new_grad =  sum([alpha[i] * grads[i] for i in range(len(grads_list))])
     new_grad = new_grad*(torch.norm(grads[0])/torch.dot(new_grad,norm_grads[0]))
-    return new_grad
+    return dict(
+        updating_grad = new_grad,
+        alpha = alpha
+    )
 
 
 METHODS = dict(
