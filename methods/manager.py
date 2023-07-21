@@ -1047,7 +1047,6 @@ class Manager(object):
                 if steps == 0:
                     self._train_normal_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, "train_task_predictor_epoch_")
                     # self._train_normal_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, "train_prompted_classifier_epoch_")
-                    args.classifier_epochs = 500
                 else:
                     self.train_classifier(args, task_predictor, swag_task_predictor, self.replayed_key, "train_task_predictor_epoch_")
                     # self.train_classifier(args, prompted_classifier, swag_prompted_classifier, self.replayed_data, "train_prompted_classifier_epoch_")
