@@ -100,7 +100,7 @@ class Manager(object):
                     param.grad.zero_()
                 loss_shared_grad = torch.cat(loss_shared_grad, dim=0)
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack([distill_shared_grad, loss_shared_grad]), args.c)
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack([distill_shared_grad, loss_shared_grad]), args.c)["updating_grad"]
 
                 total_length = 0
                 for param in classifier.parameters():
@@ -219,7 +219,7 @@ class Manager(object):
                     param.grad.zero_()
                 cur_shared_grad = torch.cat(cur_shared_grad, dim=0)
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack([past_shared_grad, cur_shared_grad]), args.c)
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack([past_shared_grad, cur_shared_grad]), args.c)["updating_grad"]
 
                 total_length = 0
                 for param in classifier.parameters():
@@ -341,7 +341,7 @@ class Manager(object):
                         past_sampled += len(labels)
                         total_past_hits += hits
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)["updating_grad"]
                 total_length = 0
                 for param in classifier.parameters():
                     length = param.numel()
@@ -435,7 +435,7 @@ class Manager(object):
                         past_sampled += len(labels)
                         total_past_hits += hits
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack(all_shared_grad), args.c)["updating_grad"]
                 total_length = 0
                 for param in classifier.parameters():
                     length = param.numel()
@@ -564,7 +564,7 @@ class Manager(object):
                     param.grad.zero_()
                 current_shared_grad = torch.cat(current_shared_grad, dim=0)
 
-                shared_grad, local_alpha_old, local_alpha_current = GRAD_METHODS[args.mtl](torch.stack([old_shared_grad, current_shared_grad]), args.c)
+                shared_grad, local_alpha_old, local_alpha_current = GRAD_METHODS[args.mtl](torch.stack([old_shared_grad, current_shared_grad]), args.c)["updating_grad"]
                 total_length = 0
                 for param in classifier.parameters():
                     length = param.numel()
