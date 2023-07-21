@@ -28,7 +28,7 @@ def convert_data_tokens_to_queries(args, data, encoder):
     data_loader = get_data_loader(args, data, shuffle=False)
     queries = []
     for (labels, tokens, _) in data_loader:
-        tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+        tokens = torch.stack([x for x in tokens], dim=0)
         queries.append(encoder(tokens)["x_encoded"])
     queries = torch.cat(queries, dim=0)
 
