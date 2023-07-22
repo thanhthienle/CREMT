@@ -158,12 +158,12 @@ class Manager(object):
                 )
 
         # Validation set
-        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        # validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        validation_data = [instance for instance in flatten_list(replayed_epochs)]
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
+        num_oldtask_samples = int(len(current_task_data) / (len(self.relids_of_task) - 1))
 
-    
         consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
@@ -185,6 +185,10 @@ class Manager(object):
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
+            # Valid (every 10 epochs) and early stop
+            if (e_id + 1) % 10:
+                continue
+
             valid_acc = self._validation(args, classifier, valid_data=validation_data)
             if valid_acc >= 0.97:
                 consecutive_satisfaction += 1
@@ -193,7 +197,6 @@ class Manager(object):
             if consecutive_satisfaction > 5:
                 print("EARLY STOP!!!")
                 break
-
 
     def _train_mtl_classifier_oldnew(self, args, encoder, classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
@@ -295,7 +298,7 @@ class Manager(object):
                 )
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        num_oldtask_samples = int(args.replay_s_e_e / (len(self.relids_of_task) - 1))
+        num_oldtask_samples = int(len(current_task_data) / (len(self.relids_of_task) - 1))
 
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
@@ -577,7 +580,8 @@ class Manager(object):
                 td.set_postfix(loss=np.array(losses).mean(), acc=total_hits / sampled)
 
         # Validation set
-        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        # validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        validation_data = [instance for instance in flatten_list(replayed_epochs)]
 
         consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
@@ -591,6 +595,10 @@ class Manager(object):
                 swag_classifier.sample(0.0)
                 bn_update(data_loader, swag_classifier)
 
+            # Valid (every 10 epochs) and early stop
+            if (e_id + 1) % 10:
+                continue
+
             valid_loss = self._validation(args, classifier, validation_data)
             if valid_loss >= 0.97:
                 consecutive_satisfaction += 1
@@ -600,7 +608,6 @@ class Manager(object):
                 print("EARLY STOP!!!")
                 break
             
-
     def train_embeddings(self, args, encoder, training_data, task_id):
         encoder.train()
         classifier = Classifier(args=args).to(args.device)
