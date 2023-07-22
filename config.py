@@ -35,6 +35,7 @@ class Param:
         parser.add_argument("--mtl_lr", default=1e-4, type=float)
         parser.add_argument("--tasktype", default=None, type=str)
         parser.add_argument("--c", default=0.5, type=float)
+        parser.add_argument("--ETF", action="store_true", default=False)
 
         # learning rate
         parser.add_argument("--classifier_lr", default=1e-2, type=float)
