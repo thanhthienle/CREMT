@@ -6,7 +6,7 @@ from scipy.optimize import minimize
 import torch
 
 
-def PCGrad(grads: List[Tuple[torch.Tensor]], reduction: str = "sum") -> torch.Tensor:
+def PCGrad(grads: List[Tuple[torch.Tensor]], unused, reduction: str = "sum") -> torch.Tensor:
     pc_grad = copy.deepcopy(grads)
     for g_i in pc_grad:
         random.shuffle(grads)
@@ -67,7 +67,7 @@ def CAGrad(grads, alpha=0.5, rescale=1):
         return dict(updating_grad = g / (1 + alpha))
 
 
-def IMTL(grads_list):
+def IMTL(grads_list, unused):
     grads = {}
     norm_grads = {}
 
@@ -121,7 +121,7 @@ def IMTL(grads_list):
     )
 
 
-def AUGD(grads_list, unused_shit):
+def AUGD(grads_list, unused):
 
     scale_norm_grads1 = {}
     scale_norm_grads = {}
@@ -172,5 +172,6 @@ def AUGD(grads_list, unused_shit):
 METHODS = dict(
     pcgrad=PCGrad,
     cagrad=CAGrad,
-    augd=AUGD
+    augd=AUGD,
+    imtl=IMTL
 )

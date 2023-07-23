@@ -317,6 +317,7 @@ class Manager(object):
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         current_relids = self.relids_of_task[-1]
+        past_num_samples = args.replay_s_e_e * (len(self.relids_of_task) - 1)
 
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
@@ -324,8 +325,8 @@ class Manager(object):
             for rel_id in past_relids:
                 past_data.extend([instance for instance in replay_data if instance["relation"] == rel_id])
             past_data_loader = get_data_loader(args, past_data, shuffle=True)
-            current_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
-            combined_data_loader = uneven_zip(past_data_loader, current_data_loader)
+            current_data_loader = get_data_loader(args, random.choices([instance for instance in replay_data if instance["relation"] in current_relids], k=past_num_samples), shuffle=True)
+            combined_data_loader = zip(past_data_loader, current_data_loader)
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
             # # SWAG
@@ -547,7 +548,7 @@ class Manager(object):
         self.past_alphas = [alpha * alpha_old for alpha in self.past_alphas]
         self.past_alphas.append(alpha_current)
 
-    def _train_normal_classifier(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, test_data, name=""):
+    def _train_normal_classifier(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.train()
         classifier.train()
         swag_classifier.train()
@@ -599,13 +600,13 @@ class Manager(object):
         # Validation set
         # validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
         # validation_data = [instance for instance in flatten_list(replayed_epochs)]
-        validation_data = test_data
+        # validation_data = test_data
 
-        consecutive_satisfaction = 0
+        # consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
-            all_data = [instance for instance in replay_data if instance["relation"] in flatten_list(self.relids_of_task[:-1])]
-            all_data.extend(current_task_data)
+            all_data = [instance for instance in replay_data if instance["relation"] in self.relids_of_task[-1]]
+            # all_data.extend(current_task_data)
             data_loader = get_data_loader(args, all_data, shuffle=True)
             train_data(data_loader, f"{name}{e_id + 1}")
             # swag_classifier.collect_model(classifier)
@@ -614,17 +615,17 @@ class Manager(object):
             #     bn_update(data_loader, swag_classifier)
 
             # Valid (every 5 epochs) and early stop
-            if (e_id + 1) % 5:
-                continue
+            # if (e_id + 1) % 5:
+            #     continue
 
-            valid_loss = self._validation(args, classifier, validation_data)
-            if valid_loss >= 0.94:
-                consecutive_satisfaction += 1
-            else: consecutive_satisfaction = 0
+            # valid_loss = self._validation(args, classifier, validation_data)
+            # if valid_loss >= 0.94:
+            #     consecutive_satisfaction += 1
+            # else: consecutive_satisfaction = 0
             
-            if consecutive_satisfaction >= 5:
-                print("EARLY STOP!!!")
-                break
+            # if consecutive_satisfaction >= 5:
+            #     print("EARLY STOP!!!")
+            #     break
 
         return classifier
             
@@ -912,6 +913,9 @@ class Manager(object):
             # model
             encoder = BertRelationEncoder(config=args).to(args.device)
 
+            # Classifier
+            task_predictor = Classifier(args=args).to(args.device)
+
             # past classifier
             past_classifier = None
 
@@ -975,24 +979,21 @@ class Manager(object):
 
                 # Current task data
                 cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-                cur_test_data_queries = convert_data_tokens_to_queries(args, cur_test_data, encoder)
-                all_test_data += cur_test_data_queries
+                # cur_test_data_queries = convert_data_tokens_to_queries(args, cur_test_data, encoder)
+                # all_test_data += cur_test_data_queries
 
                 # all
                 all_train_tasks.append(cur_training_data)
                 all_tasks.append(cur_test_data)
-
-                # classifier
-                task_predictor = Classifier(args=args).to(args.device)
 
                 # swag task predictor
                 swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
 
                 # train
                 if steps == 0:
-                    past_classifier = self._train_normal_classifier(args, encoder, task_predictor, None, swag_task_predictor, self.replayed_key, cur_task_data, all_test_data, "train_task_predictor_epoch_")
+                    past_classifier = self._train_normal_classifier(args, encoder, task_predictor, None, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
                 else:
-                    past_classifier = self.train_classifier(args, encoder, task_predictor, past_classifier, swag_task_predictor, self.replayed_key, cur_task_data, all_test_data, "train_task_predictor_epoch_")
+                    past_classifier = self.train_classifier(args, encoder, task_predictor, past_classifier, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
 
                 # prediction
                 print("===NON-SWAG===")
