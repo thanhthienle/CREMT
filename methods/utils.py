@@ -19,6 +19,16 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
+def uneven_zip(iter1, iter2):
+    max_length = max(len(iter1), len(iter2))
+    if len(iter1) < max_length:
+        iter1 = random.choices(iter1, k=max_length)
+    elif len(iter2) < max_length:
+        iter2 = random.choices(iter2, k=max_length)
+    zip_object = zip(iter1, iter2)
+    return zip_object
+
+
 def flatten_list(nested_list):
     return [item for small_list in nested_list for item in small_list]
 

@@ -316,27 +316,26 @@ class Manager(object):
                 )
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        num_oldtask_samples = min(args.replay_s_e_e, int(len(current_task_data) / (len(self.relids_of_task) - 1)))
+        current_relids = self.relids_of_task[-1]
 
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             past_data = []
             for rel_id in past_relids:
-                past_data.extend(random.sample([instance for instance in replay_data if instance["relation"] == rel_id], k=num_oldtask_samples))
-            combined_data_loader = zip(
-                get_data_loader(args, past_data, shuffle=True),
-                get_data_loader(args, current_task_data, shuffle=True)
-            )
+                past_data.extend([instance for instance in replay_data if instance["relation"] == rel_id])
+            past_data_loader = get_data_loader(args, past_data, shuffle=True)
+            current_data_loader = get_data_loader(args, [instance for instance in replay_data if instance["relation"] in current_relids], shuffle=True)
+            combined_data_loader = uneven_zip(past_data_loader, current_data_loader)
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
-            # SWAG
-            all_data = past_data
-            all_data.extend(current_task_data)
-            data_loader = get_data_loader(args, all_data, shuffle=True)
-            swag_classifier.collect_model(classifier)
-            if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
-                swag_classifier.sample(0.0)
-                bn_update(data_loader, swag_classifier)
+            # # SWAG
+            # all_data = past_data
+            # all_data.extend(current_task_data)
+            # data_loader = get_data_loader(args, all_data, shuffle=True)
+            # swag_classifier.collect_model(classifier)
+            # if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
+            #     swag_classifier.sample(0.0)
+            #     bn_update(data_loader, swag_classifier)
 
     def _train_mtl_classifier_ntask(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
