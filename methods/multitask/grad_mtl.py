@@ -4,6 +4,7 @@ import copy
 from typing import List, Tuple
 from scipy.optimize import minimize
 import torch
+from tqdm import tqdm
 
 
 def PCGrad(grads: List[Tuple[torch.Tensor]], unused, reduction: str = "sum") -> torch.Tensor:
@@ -21,7 +22,7 @@ def PCGrad(grads: List[Tuple[torch.Tensor]], unused, reduction: str = "sum") -> 
                 g_j_norm_square = (
                     torch.norm(torch.cat([torch.flatten(g) for g in g_j])) ** 2
                 )
-                for grad_i, grad_j in zip(g_i, g_j):
+                for grad_i, grad_j in tqdm(zip(g_i, g_j)):
                     grad_i -= g_i_g_j * grad_j / g_j_norm_square
 
     merged_grad = [sum(g) for g in zip(*pc_grad)]
