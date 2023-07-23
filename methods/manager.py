@@ -275,15 +275,21 @@ class Manager(object):
                     param.grad.zero_()
                 cur_shared_grad = torch.cat(cur_shared_grad, dim=0)
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack([past_shared_grad, cur_shared_grad]), args.c)["updating_grad"]
-
-                total_length = 0
-                for param in classifier.parameters():
-                    length = param.numel()
-                    param.grad.data = shared_grad[
-                        total_length : total_length + length
-                    ].reshape(param.shape)
-                    total_length += length
+                if args.mtl == "pcgrad":
+                    shared_grad = GRAD_METHODS[args.mtl]([past_shared_grad, cur_shared_grad], args.c)["updating_grad"]
+                    index_shared_grad = 0
+                    for param in classifier.parameters():
+                            param.grad.data = shared_grad[index_shared_grad]
+                            index_shared_grad += 1
+                else:
+                    shared_grad = GRAD_METHODS[args.mtl](torch.stack([past_shared_grad, cur_shared_grad]), args.c)["updating_grad"]
+                    total_length = 0
+                    for param in classifier.parameters():
+                        length = param.numel()
+                        param.grad.data = shared_grad[
+                            total_length : total_length + length
+                        ].reshape(param.shape)
+                        total_length += length
 
                 past_losses.append(past_loss.item())
                 cur_losses.append(cur_loss.item())
@@ -605,9 +611,9 @@ class Manager(object):
         # consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
-            all_data = [instance for instance in replay_data if instance["relation"] in self.relids_of_task[-1]]
+            # all_data = [instance for instance in replay_data if instance["relation"] in self.relids_of_task[-1]]
             # all_data.extend(current_task_data)
-            data_loader = get_data_loader(args, all_data, shuffle=True)
+            data_loader = get_data_loader(args, replay_data, shuffle=True)
             train_data(data_loader, f"{name}{e_id + 1}")
             # swag_classifier.collect_model(classifier)
             # if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
