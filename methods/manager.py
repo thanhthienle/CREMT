@@ -40,16 +40,9 @@ def convert_data_tokens_to_queries(args, data, encoder):
 
 
 def etf_logitize(args, past_targets):
-    # Number of elements in the tensor
     num_elements = past_targets.shape[0]
-
-    # Number of columns in the new tensor
     num_columns = args.rel_per_task * args.num_tasks
-
-    # Create the new tensor with 1/39 values
     new_tensor = torch.ones(num_elements, num_columns) / (1 - num_columns)
-
-    # Set the position of the original elements to 1
     new_tensor[range(num_elements), past_targets] = 1
     return new_tensor
 
@@ -68,7 +61,7 @@ class Manager(object):
         else:
             self.train_classifier = self._train_normal_classifier
 
-    def _train_mtl_classifier_distill(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, test_data, name=""):
+    def _train_mtl_classifier_distill(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
         classifier.train()
         swag_classifier.train()
@@ -172,9 +165,8 @@ class Manager(object):
                 )
 
         # Validation set
-        # validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
+        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
         # validation_data = [instance for instance in flatten_list(replayed_epochs)]
-        validation_data = test_data
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
         num_oldtask_samples = min(args.replay_s_e_e, int(len(current_task_data) / (len(self.relids_of_task) - 1)))
@@ -205,14 +197,14 @@ class Manager(object):
             if (e_id + 1) % 5:
                 continue
 
-            valid_acc = self._validation(args, classifier, valid_data=validation_data)
-            if valid_acc >= 0.90:
-                consecutive_satisfaction += 1
-            else: consecutive_satisfaction = 0
+            _ = self._validation(args, classifier, valid_data=validation_data)
+            # if valid_acc >= 0.90:
+            #     consecutive_satisfaction += 1
+            # else: consecutive_satisfaction = 0
 
-            if consecutive_satisfaction > 5:
-                print("EARLY STOP!!!")
-                break
+            # if consecutive_satisfaction > 5:
+            #     print("EARLY STOP!!!")
+            #     break
         
         return classifier
 
@@ -635,9 +627,9 @@ class Manager(object):
 
         return classifier
             
-    def train_embeddings(self, args, encoder, training_data, task_id):
+    def train_embeddings(self, args, encoder, final_linear, training_data, task_id):
         encoder.train()
-        classifier = Classifier(args=args).to(args.device)
+        classifier = Classifier(args=args, final_linear=final_linear).to(args.device)
         classifier.train()
         data_loader = get_data_loader(args, training_data, shuffle=True)
 
@@ -919,11 +911,13 @@ class Manager(object):
             # model
             encoder = BertRelationEncoder(config=args).to(args.device)
 
-            # Classifier
-            task_predictor = Classifier(args=args).to(args.device)
-
             # past classifier
             past_classifier = None
+
+            # Top linear
+            if args.ETF:
+                final_linear = ETFLinear(args.encoder_output_size, args.rel_per_task * args.num_tasks, device=args.device)
+            else: final_linear = None
 
             # initialize memory
             self.memorized_samples = {}
@@ -931,7 +925,6 @@ class Manager(object):
             # load data and start computation
             all_train_tasks = []
             all_tasks = []
-            all_test_data = []
             seen_data = {}
 
             # Relation ids of every task
@@ -969,7 +962,7 @@ class Manager(object):
 
                 # train encoder
                 if steps == 0:
-                    self.train_embeddings(args, encoder, cur_training_data, task_id=steps)
+                    self.train_embeddings(args, encoder, final_linear, cur_training_data, task_id=steps)
                     encoder.encoder.first_task_embeddings = copy.deepcopy(encoder.encoder.embeddings)
                     encoder.encoder.first_task_embeddings.eval()
                     encoder.freeze_embeddings()
@@ -985,12 +978,13 @@ class Manager(object):
 
                 # Current task data
                 cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-                # cur_test_data_queries = convert_data_tokens_to_queries(args, cur_test_data, encoder)
-                # all_test_data += cur_test_data_queries
 
                 # all
                 all_train_tasks.append(cur_training_data)
                 all_tasks.append(cur_test_data)
+
+                # Classifier
+                task_predictor = Classifier(args=args, final_linear=final_linear).to(args.device)
 
                 # swag task predictor
                 swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)

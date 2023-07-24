@@ -34,18 +34,15 @@ class ETFLinear(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, final_linear=None):
+        top_linear = final_linear if final_linear is not None else nn.Linear(args.encoder_output_size, args.encoder_output_size)
         super().__init__()
-        if args.ETF:
-            final_linear = ETFLinear(args.encoder_output_size, args.rel_per_task * args.num_tasks)
-        else: final_linear = nn.Linear(args.encoder_output_size, args.rel_per_task * args.num_tasks)
-
         self.head = nn.Sequential(
             nn.Linear(args.encoder_output_size * 2, args.encoder_output_size, bias=True),
             nn.ReLU(inplace=True),
             nn.Linear(args.encoder_output_size, args.encoder_output_size, bias=True),
             nn.ReLU(inplace=True),
-            final_linear,
+            top_linear,
         ).to(args.device)
 
     def forward(self, x):
