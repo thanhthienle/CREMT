@@ -93,8 +93,11 @@ class Manager(object):
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
                 past_queries = torch.stack([x.to(args.device) for x in past_queries], dim=0)
-                with torch.no_grad():
-                    past_distill_targets = F.softmax(past_classifier(past_queries), dim=1, dtype=torch.float32)
+                if not args.ETF:
+                    with torch.no_grad():
+                        past_distill_targets = F.softmax(past_classifier(past_queries), dim=1, dtype=torch.float32)
+                else:
+                    past_distill_targets = F.softmax(etf_logitize(past_targets), dim=1, dtype=torch.float32)
 
                 cur_sampled += len(cur_labels)
                 cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
