@@ -194,10 +194,10 @@ class Manager(object):
             #     bn_update(data_loader, swag_classifier)
 
             # Valid (every 5 epochs) and early stop
-            if (e_id + 1) % 5:
-                continue
+            # if (e_id + 1) % 5:
+            #     continue
 
-            _ = self._validation(args, classifier, valid_data=validation_data)
+            # _ = self._validation(args, classifier, valid_data=validation_data)
             # if valid_acc >= 0.90:
             #     consecutive_satisfaction += 1
             # else: consecutive_satisfaction = 0
