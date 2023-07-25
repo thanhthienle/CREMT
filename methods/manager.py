@@ -42,7 +42,7 @@ def convert_data_tokens_to_queries(args, data, encoder):
 def etf_logitize(args, past_targets):
     num_elements = past_targets.shape[0]
     num_columns = args.rel_per_task * args.num_tasks
-    new_tensor = torch.ones(num_elements, num_columns) / (1 - num_columns)
+    new_tensor = torch.ones(num_elements, num_columns, device=args.device) / (1 - num_columns)
     new_tensor[range(num_elements), past_targets] = 1
     return new_tensor
 
