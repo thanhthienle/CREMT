@@ -2,7 +2,7 @@ import yaml
 import torch
 from config import Param
 from methods.utils import setup_seed
-from methods.manager import Manager, NashManager
+from methods.manager import Manager
 
 
 def run(args):
@@ -12,9 +12,7 @@ def run(args):
         writer.write(yaml.dump(args.__dict__, sort_keys=True, indent=4))
 
     setup_seed(args.seed)
-    if args.mtl == "nashmtl":
-        manager = NashManager(args)
-    else: manager = Manager(args)
+    manager = Manager(args)
     manager.train(args)
 
 
