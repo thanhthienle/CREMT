@@ -996,8 +996,9 @@ class Manager(object):
                             self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
 
                 # Current task data
-                cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-
+                # cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
+                cur_task_data = None
+                
                 # all
                 all_train_tasks.append(cur_training_data)
                 all_tasks.append(cur_test_data)
@@ -1022,10 +1023,12 @@ class Manager(object):
                     results.append([len(i_th_test_data), self.evaluate_strict_model(args, encoder, task_predictor, i_th_test_data, f"test_task_{i+1}", steps)])
                 cur_acc = results[-1][1]
                 total_acc = sum([result[0] * result[1] for result in results]) / sum([result[0] for result in results])
+                cur_task_acc = [result[1] for result in results]
                 print(f"current test accuracy: {cur_acc}")
                 print(f"history test accuracy: {total_acc}")
                 writer.write(f"current test accuracy: {cur_acc}\n")
                 writer.write(f"history test accuracy: {total_acc}\n")
+                writer.write(f"all history accuracy: {cur_task_acc}\n")
                 test_cur.append(cur_acc)
                 test_total.append(total_acc)
 

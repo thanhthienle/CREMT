@@ -19,6 +19,7 @@ class Param:
         parser.add_argument("--total_rounds", default=5, type=int)
 
         # training parameters
+        parser.add_argument("--bert_size", default="base", type=str)
         parser.add_argument("--batch_size", default=16, type=int)
         parser.add_argument("--num_tasks", default=10)
         parser.add_argument("--rel_per_task", default=8)
@@ -85,3 +86,9 @@ class Param:
         parser.add_argument("--prompt_key_init", default="uniform", type=str)
 
         return parser
+
+
+SIZE_DIM = {
+    "base": 768,
+    "large": 1024
+}
