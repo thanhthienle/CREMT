@@ -30,7 +30,7 @@ def convert_data_tokens_to_queries(args, data, encoder):
     print("Forward data...")
     for (labels, tokens, _) in tqdm(data_loader):
         tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-        queries.append(encoder(tokens)["x_encoded"])
+        queries.append(encoder(tokens))
     queries = torch.cat(queries, dim=0).cpu()
 
     new_data = copy.deepcopy(data)
@@ -678,7 +678,7 @@ class Manager(object):
                 encoder_out = encoder(tokens)
 
                 # classifier forward
-                reps = classifier(encoder_out["x_encoded"])
+                reps = classifier(encoder_out)
 
                 # prediction
                 probs = F.softmax(reps, dim=1)
@@ -726,7 +726,7 @@ class Manager(object):
             encoder_out = encoder(tokens)
 
             tokens = tokens.cpu().detach().numpy()
-            x_key = encoder_out["x_encoded"].cpu().detach().numpy()
+            x_key = encoder_out.cpu().detach().numpy()
             # add to new training data
             for i in range(len(labels)):
                 new_training_data.append({"relation": labels[i], "tokens": tokens[i], "key": x_key[i]})
@@ -759,7 +759,7 @@ class Manager(object):
                 encoder_out = encoder(tokens, prompt_pool, x_key)
 
                 # classifier forward
-                reps = classifier(encoder_out["x_encoded"])
+                reps = classifier(encoder_out)
 
                 # loss components
                 prompt_reduce_sim_loss = -args.pull_constraint_coeff * encoder_out["reduce_sim"]
@@ -821,30 +821,23 @@ class Manager(object):
 
         # x_data
         x_key = []
-        # x_encoded = []
 
         for step, (labels, tokens, _) in enumerate(td):
             tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-            x_key.append(encoder(tokens)["x_encoded"])
+            x_key.append(encoder(tokens))
 
             if step == 0 and jit_trace:
                 scripted_encoder = torch.jit.trace(encoder, (tokens), strict=False)
                 torch.jit.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
 
-            # x_encoded.append(encoder(tokens, prompt_pool, x_key[-1])["x_encoded"])
-
         x_key = torch.cat(x_key, dim=0)
-        # x_encoded = torch.cat(x_encoded, dim=0)
 
         key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_key.cpu().detach().numpy())
-        # encoded_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_encoded.cpu().detach().numpy())
 
         if args.gmm_num_components == 1:
             key_mixture.weights_[0] = 1.0
-            # encoded_mixture.weights_[0] = 1.0
 
         out["replay_key"] = key_mixture
-        # out["replay"] = encoded_mixture
         return out
 
     @torch.no_grad()
@@ -900,7 +893,7 @@ class Manager(object):
             encoder_out = encoder(tokens)
 
             # prediction
-            reps = classifier(encoder_out["x_encoded"])
+            reps = classifier(encoder_out)
             probs = F.softmax(reps, dim=1)
             _, pred = probs.max(1)
 

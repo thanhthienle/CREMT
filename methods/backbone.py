@@ -36,27 +36,11 @@ class BaseBertEncoder(BertPreTrainedModel):
         self.embeddings.word_embeddings = value
 
     def forward(self, input_ids, prompt_pool=None, x_key=None, prompt_pools=None):
-        out = dict()
         if self.first_task_embeddings is not None and x_key is None:
             embeddings_output = self.first_task_embeddings(input_ids=input_ids)
         else:
             embeddings_output = self.embeddings(input_ids=input_ids)
-        if prompt_pool is not None:
-            out = prompt_pool(embeddings_output, x_key=x_key)
-            encoder_output = self.encoder(out["prompted_embedding"])
-        elif prompt_pools is not None:
-            outs = []
-            for _, prompt_pool in enumerate(prompt_pools):
-                embedding_output = torch.index_select(embeddings_output, 0, torch.tensor([_]).cuda())
-                single_x_key = torch.index_select(x_key, 0, torch.tensor([_]).cuda())
-                outs.append(prompt_pool(embedding_output, single_x_key))
-            out["prompted_embedding"] = torch.cat([_["prompted_embedding"] for _ in outs])
-            encoder_output = self.encoder(out["prompted_embedding"])
-        else:
-            encoder_output = self.encoder(embeddings_output)
-        sequence_output = encoder_output[0]
-        out["attention_out"] = sequence_output
-        return out
+        return self.encoder(embeddings_output)[0]
 
 
 class BertRelationEncoder(nn.Module):
@@ -81,11 +65,10 @@ class BertRelationEncoder(nn.Module):
             param_.requires_grad = False
 
     def forward(self, input_ids, prompt_pool=None, x_key=None, prompt_pools=None):
-        out = dict()
         e11 = (input_ids == 30522).nonzero()
         e21 = (input_ids == 30524).nonzero()
 
-        out = self.encoder(input_ids, prompt_pool, x_key, prompt_pools)
+        attention_out = self.encoder(input_ids, prompt_pool, x_key, prompt_pools)
         output = []
         for i in range(e11.shape[0]):
             if prompt_pool is not None:
@@ -95,10 +78,9 @@ class BertRelationEncoder(nn.Module):
             else:
                 additional_length = 0
 
-            instance_output = torch.index_select(out["attention_out"], 0, torch.tensor(i).cuda())
+            instance_output = torch.index_select(attention_out, 0, torch.tensor(i).cuda())
             instance_output = torch.index_select(instance_output, 1, torch.tensor([e11[i][1], e21[i][1]]).cuda() + additional_length)
             output.append(instance_output)
         output = torch.cat(output, dim=0)
         output = output.view(output.shape[0], -1)
-        out["x_encoded"] = output
-        return out
+        return output
