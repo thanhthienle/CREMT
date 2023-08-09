@@ -950,16 +950,16 @@ class Manager(object):
             self.relids_of_task = []
 
             for steps, (training_data, valid_data, test_data, current_relations, historic_test_data, seen_relations) in enumerate(sampler):
-                writer = open(f"live_{args.logname}", "a")
                 print("=" * 100)
                 print(f"task={steps+1}")
                 print(f"current relations={current_relations}")
 
                 # Live result
-                writer.write("=" * 100)
-                writer.write("\n")
-                writer.write(f"task={steps+1}\n")
-                writer.write(f"current relations={current_relations}\n")
+                with open(f"live_{args.logname}", "a") as writer:
+                    writer.write("=" * 100)
+                    writer.write("\n")
+                    writer.write(f"task={steps+1}\n")
+                    writer.write(f"current relations={current_relations}\n")
 
                 self.steps = steps
                 self.not_seen_rel_ids = [rel_id for rel_id in range(args.num_tasks * args.rel_per_task) if rel_id not in [self.rel2id[relation] for relation in seen_relations]]
@@ -1017,7 +1017,8 @@ class Manager(object):
 
                 # prediction
                 print("===NON-SWAG===")
-                writer.write("===NON-SWAG===\n")
+                with open(f"live_{args.logname}", "a") as writer:
+                    writer.write("===NON-SWAG===\n")
                 results = []
                 for i, i_th_test_data in enumerate(all_tasks):
                     results.append([len(i_th_test_data), self.evaluate_strict_model(args, encoder, task_predictor, i_th_test_data, f"test_task_{i+1}", steps)])
@@ -1026,9 +1027,10 @@ class Manager(object):
                 cur_task_acc = [result[1] for result in results]
                 print(f"current test accuracy: {cur_acc}")
                 print(f"history test accuracy: {total_acc}")
-                writer.write(f"current test accuracy: {cur_acc}\n")
-                writer.write(f"history test accuracy: {total_acc}\n")
-                writer.write(f"all history accuracy: {cur_task_acc}\n")
+                with open(f"live_{args.logname}", "a") as writer:
+                    writer.write(f"current test accuracy: {cur_acc}\n")
+                    writer.write(f"history test accuracy: {total_acc}\n")
+                    writer.write(f"all history accuracy: {cur_task_acc}\n")
                 test_cur.append(cur_acc)
                 test_total.append(total_acc)
 
@@ -1047,6 +1049,7 @@ class Manager(object):
                 # test_total.append(total_acc)
 
                 print("===UNTIL-NOW==")
+                writer = open(f"live_{args.logname}", "a")
                 writer.write("===UNTIL-NOW==\n")
                 print("accuracies:")
                 writer.write("accuracies:\n")
