@@ -35,7 +35,7 @@ class ETFLinear(nn.Module):
 
 class Classifier(nn.Module):
     def __init__(self, args, final_linear=None):
-        top_linear = final_linear if final_linear is not None else nn.Linear(args.encoder_output_size, args.rel_per_task * 10)
+        top_linear = final_linear if final_linear is not None else nn.Linear(args.encoder_output_size, args.rel_per_task * args.num_tasks)
         super().__init__()
         self.head = nn.Sequential(
             nn.Linear(args.encoder_output_size * 2, args.encoder_output_size, bias=True),
