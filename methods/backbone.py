@@ -21,13 +21,19 @@ class CustomedBertEmbeddings(BertEmbeddings):
     
     def forward(
         self,
-        input_ids: torch.LongTensor,
+        input_ids: torch.LongTensor = None,
         token_type_ids: torch.LongTensor = None,
         position_ids: torch.LongTensor = None,
         inputs_embeds: torch.FloatTensor = None,
         past_key_values_length: int = 0,
     ) -> torch.Tensor:
-        super().forward(input_ids, token_type_ids, position_ids, past_key_values_length)
+        return super().forward(
+            input_ids=inputs_embeds,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            past_key_values_length=past_key_values_length
+        )
 
 
 class BaseBertEncoder(BertPreTrainedModel):
