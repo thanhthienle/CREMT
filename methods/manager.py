@@ -811,7 +811,7 @@ class Manager(object):
             train_data(data_loader, f"train_prompt_pool_epoch_{e_id + 1}", e_id)
 
     @torch.no_grad()
-    def sample_memorized_data(self, args, encoder, prompt_pool, relation_data, name, task_id):
+    def sample_memorized_data(self, args, encoder, prompt_pool, relation_data, name, task_id, jit_trace=False):
         encoder.eval()
         data_loader = get_data_loader(args, relation_data, shuffle=False)
         td = tqdm(data_loader, desc=name)
@@ -826,6 +826,11 @@ class Manager(object):
         for step, (labels, tokens, _) in enumerate(td):
             tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
             x_key.append(encoder(tokens)["x_encoded"])
+
+            if step == 0 and jit_trace:
+                scripted_encoder = torch.jit.trace(encoder, (tokens))
+                torch.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
+
             # x_encoded.append(encoder(tokens, prompt_pool, x_key[-1])["x_encoded"])
 
         x_key = torch.cat(x_key, dim=0)
@@ -932,8 +937,6 @@ class Manager(object):
 
             # model
             encoder = BertRelationEncoder(config=args).to(args.device)
-            scripted_encoder = torch.jit.script(encoder)
-            torch.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
 
             # past classifier
             past_classifier = None
@@ -953,6 +956,9 @@ class Manager(object):
 
             # Relation ids of every task
             self.relids_of_task = []
+
+            # Trace jit
+            jit_trace = True
 
             for steps, (training_data, valid_data, test_data, current_relations, historic_test_data, seen_relations) in enumerate(sampler):
                 print("=" * 100)
@@ -1000,7 +1006,9 @@ class Manager(object):
 
                 # memory
                 for i, relation in enumerate(current_relations):
-                    self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
+                    self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps, jit_trace)
+                    if jit_trace == True:
+                        jit_trace = False
                     rel_id = self.rel2id[relation]
                     replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
                     for e_id in range(args.replay_epochs):
