@@ -829,7 +829,7 @@ class Manager(object):
 
             if step == 0 and jit_trace:
                 scripted_encoder = torch.jit.trace(encoder, (tokens))
-                torch.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
+                torch.jit.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
 
             # x_encoded.append(encoder(tokens, prompt_pool, x_key[-1])["x_encoded"])
 
@@ -1002,7 +1002,7 @@ class Manager(object):
 
                     # Script classifier
                     scripted_classifier = torch.jit.script(task_predictor)
-                    torch.save(scripted_classifier, "fewrel_crest/scripted_classifier.pt")
+                    torch.jit.save(scripted_classifier, "fewrel_crest/scripted_classifier.pt")
 
                 # memory
                 for i, relation in enumerate(current_relations):
