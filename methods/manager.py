@@ -927,8 +927,13 @@ class Manager(object):
             # convert
             self.id2taskid = {}
 
+            # Saving
+            if not os.path.exists("fewrel_crest"): os.mkdir("fewrel_crest")
+
             # model
             encoder = BertRelationEncoder(config=args).to(args.device)
+            scripted_encoder = torch.jit.script(encoder)
+            torch.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
 
             # past classifier
             past_classifier = None
@@ -979,12 +984,19 @@ class Manager(object):
                     self.id2taskid[rel_id] = steps
                 self.relids_of_task.append(cur_rel_ids)
 
+                # Classifier
+                task_predictor = Classifier(args=args, final_linear=final_linear).to(args.device)
+
                 # train encoder
                 if steps == 0:
                     self.train_embeddings(args, encoder, final_linear, cur_training_data, task_id=steps)
                     encoder.encoder.first_task_embeddings = copy.deepcopy(encoder.encoder.embeddings)
                     encoder.encoder.first_task_embeddings.eval()
                     encoder.freeze_embeddings()
+
+                    # Script classifier
+                    scripted_classifier = torch.jit.script(task_predictor)
+                    torch.save(scripted_classifier, "fewrel_crest/scripted_classifier.pt")
 
                 # memory
                 for i, relation in enumerate(current_relations):
@@ -1002,9 +1014,6 @@ class Manager(object):
                 # all
                 all_train_tasks.append(cur_training_data)
                 all_tasks.append(cur_test_data)
-
-                # Classifier
-                task_predictor = Classifier(args=args, final_linear=final_linear).to(args.device)
 
                 # swag task predictor
                 swag_task_predictor = SWAG(Classifier, no_cov_mat=not (args.cov_mat), max_num_models=args.max_num_models, args=args)
@@ -1063,5 +1072,5 @@ class Manager(object):
                     writer.write(f"{x}\n")
                 writer.close()
 
-            encoder.save_pretrained("fewrel_crest")
-            classifier
+            torch.save(encoder.state_dict(), "fewrel_crest/encoder_state.pt")
+            torch.save(task_predictor.state_dict(), "fewrel_crest/classifier_state.pt")
