@@ -18,23 +18,6 @@ class CustomedBertEmbeddings(BertEmbeddings):
 
     def custom_backward_hook(self, grad):
         return grad * self.mask
-    
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        token_type_ids: torch.LongTensor = None,
-        position_ids: torch.LongTensor = None,
-        inputs_embeds: torch.FloatTensor = None,
-        past_key_values_length: int = 0,
-    ) -> torch.Tensor:
-        return BertEmbeddings.forward(
-            self,
-            input_ids=input_ids,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            inputs_embeds=inputs_embeds,
-            past_key_values_length=past_key_values_length
-        )
 
 
 class BaseBertEncoder(BertPreTrainedModel):
