@@ -827,7 +827,7 @@ class Manager(object):
             x_key.append(encoder(tokens))
 
             if step == 0 and jit_trace:
-                scripted_encoder = torch.jit.trace(encoder, (tokens))
+                scripted_encoder = torch.jit.script(encoder)
                 torch.jit.save(scripted_encoder, "fewrel_crest/scripted_encoder.pt")
 
         x_key = torch.cat(x_key, dim=0)
