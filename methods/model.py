@@ -45,5 +45,5 @@ class Classifier(nn.Module):
             top_linear,
         ).to(args.device)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.head(x)

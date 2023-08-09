@@ -35,7 +35,7 @@ class BaseBertEncoder(BertPreTrainedModel):
     def set_input_embeddings(self, value):
         self.embeddings.word_embeddings = value
 
-    def forward(self, input_ids, prompt_pool=None, x_key=None, prompt_pools=None):
+    def forward(self, input_ids: torch.Tensor, prompt_pool=None, x_key=None, prompt_pools=None):
         if self.first_task_embeddings is not None and x_key is None:
             embeddings_output = self.first_task_embeddings(input_ids=input_ids)
         else:
@@ -64,7 +64,7 @@ class BertRelationEncoder(nn.Module):
         for param_ in self.encoder.embeddings.parameters():
             param_.requires_grad = False
 
-    def forward(self, input_ids, prompt_pool=None, x_key=None, prompt_pools=None):
+    def forward(self, input_ids: torch.Tensor, prompt_pool=None, x_key=None, prompt_pools=None):
         e11 = (input_ids == 30522).nonzero()
         e21 = (input_ids == 30524).nonzero()
 
