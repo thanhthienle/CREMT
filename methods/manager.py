@@ -927,6 +927,9 @@ class Manager(object):
             # convert
             self.id2taskid = {}
 
+            # model
+            encoder = BertRelationEncoder(config=args).to(args.device)
+
             # past classifier
             past_classifier = None
 
@@ -975,9 +978,6 @@ class Manager(object):
                     cur_rel_ids.append(rel_id)
                     self.id2taskid[rel_id] = steps
                 self.relids_of_task.append(cur_rel_ids)
-
-                # model
-                encoder = BertRelationEncoder(config=args).to(args.device)
 
                 # train encoder
                 if steps == 0:
@@ -1062,3 +1062,6 @@ class Manager(object):
                     print(x)
                     writer.write(f"{x}\n")
                 writer.close()
+
+            encoder.save_pretrained("fewrel_crest")
+            classifier
