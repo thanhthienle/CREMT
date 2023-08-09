@@ -28,7 +28,7 @@ class CustomedBertEmbeddings(BertEmbeddings):
         past_key_values_length: int = 0,
     ) -> torch.Tensor:
         return super().forward(
-            input_ids=inputs_embeds,
+            input_ids=input_ids,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             inputs_embeds=inputs_embeds,
