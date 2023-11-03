@@ -172,7 +172,7 @@ class Manager(object):
         # validation_data = [instance for instance in flatten_list(replayed_epochs)]
 
         past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        num_oldtask_samples = min(args.replay_s_e_e, int(len(current_task_data) / (len(self.relids_of_task) - 1)))
+        # num_oldtask_samples = min(args.replay_s_e_e, int(len(current_task_data) / (len(self.relids_of_task) - 1)))
         oversampling_size = args.replay_s_e_e * (len(self.relids_of_task) - 1)
 
         consecutive_satisfaction = 0
@@ -996,8 +996,10 @@ class Manager(object):
                             self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
 
                 # Current task data
-                # cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-                cur_task_data = None
+                if args.tasktype == "normal":
+                    cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
+                else:
+                    cur_task_data = None
                 
                 # all
                 all_train_tasks.append(cur_training_data)
@@ -1008,7 +1010,7 @@ class Manager(object):
 
                 # train
                 if steps == 0:
-                    past_classifier = self._train_normal_classifier(args, encoder, task_predictor, None, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
+                    past_classifier = self._train_normal_classifier(args, encoder, task_predictor, None, swag_task_predictor, self.replayed_key, None, "train_task_predictor_epoch_")
                 else:
                     past_classifier = self.train_classifier(args, encoder, task_predictor, past_classifier, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
 
