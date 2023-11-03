@@ -2,3 +2,5 @@ __pycache__/
 _process_path/
 live_*
 *.sh
+bash_scripts/
+results/
