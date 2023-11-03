@@ -939,7 +939,6 @@ class Manager(object):
             self.memorized_samples = {}
 
             # load data and start computation
-            all_train_tasks = []
             all_tasks = []
             seen_data = {}
 
@@ -997,12 +996,11 @@ class Manager(object):
 
                 # Current task data
                 if args.tasktype == "normal":
-                    cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-                else:
                     cur_task_data = None
-                
-                # all
-                all_train_tasks.append(cur_training_data)
+                else:
+                    cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
+                    
+                # all test data
                 all_tasks.append(cur_test_data)
 
                 # swag task predictor
