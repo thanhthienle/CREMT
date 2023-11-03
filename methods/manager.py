@@ -995,7 +995,7 @@ class Manager(object):
                             self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
 
                 # Current task data
-                if args.tasktype == "normal":
+                if args.tasktype in ("normal", "oldnew"):
                     cur_task_data = None
                 else:
                     cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
