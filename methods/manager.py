@@ -29,7 +29,7 @@ def convert_data_tokens_to_queries(args, data, encoder):
     data_loader = get_data_loader(args, data, shuffle=False)
     queries = []
     print("Forward data...")
-    for (labels, tokens, _) in tqdm(data_loader):
+    for (_, tokens, _) in tqdm(data_loader):
         tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
         queries.append(encoder(tokens))
     queries = torch.cat(queries, dim=0).cpu()
@@ -37,6 +37,8 @@ def convert_data_tokens_to_queries(args, data, encoder):
     new_data = copy.deepcopy(data)
     for i in range(len(new_data)):
         new_data[i]["tokens"] = queries[i]
+        print(new_data[i])
+        exit()
     return new_data
 
 
@@ -61,6 +63,11 @@ class Manager(object):
                 raise NotImplementedError()
         else:
             self.train_classifier = self._train_normal_classifier
+
+        try:
+            self.sample_memorized_data = getattr(self, f"sample_{gen_abvr[args.generative]}_data")
+        except:
+            raise NotImplementedError()
 
     def _train_mtl_classifier_distill(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
@@ -346,15 +353,6 @@ class Manager(object):
             current_data_loader = get_data_loader(args, random.choices([instance for instance in replay_data if instance["relation"] in current_relids], k=past_num_samples), shuffle=True)
             combined_data_loader = zip(past_data_loader, current_data_loader)
             train_data(combined_data_loader, f"{name}{e_id + 1}")
-
-            # # SWAG
-            # all_data = past_data
-            # all_data.extend(current_task_data)
-            # data_loader = get_data_loader(args, all_data, shuffle=True)
-            # swag_classifier.collect_model(classifier)
-            # if e_id % args.sample_freq == 0 or e_id == args.classifier_epochs - 1:
-            #     swag_classifier.sample(0.0)
-            #     bn_update(data_loader, swag_classifier)
 
     def _train_mtl_classifier_ntask(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
@@ -812,14 +810,13 @@ class Manager(object):
             train_data(data_loader, f"train_prompt_pool_epoch_{e_id + 1}", e_id)
 
     @torch.no_grad()
-    def sample_memorized_data(self, args, encoder, prompt_pool, relation_data, name, task_id):
+    def sample_gmm_data(self, args, encoder, encoded_data, name, task_id):
+        """
+        :param encoded_data: (List) data of relation
+        """
+
         encoder.eval()
-        data_loader = get_data_loader(args, relation_data, shuffle=False)
-        print("\nHAHAHAHAHAH")
-        for (labels, tokens, _) in data_loader:
-            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-            print(tokens.type())
-            break
+        data_loader = get_data_loader(args, encoded_data, shuffle=False)
         
         # output dict
         out = {}
@@ -827,12 +824,13 @@ class Manager(object):
         if args.generative == "gmm":
             td = tqdm(data_loader, desc=name)
             # x_data
-            x_key = []
-            for (labels, tokens, _) in td:
+            x_encoded = []
+            for (_, tokens, _) in td:
                 tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-                x_key.append(encoder(tokens))
-            x_key = torch.cat(x_key, dim=0)
-            key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_key.cpu().detach().numpy())
+                x_encoded.append(tokens)
+                # x_encoded.append(encoder(tokens)) # When encoded_data is not encoded but is in original format (tokens)
+            x_encoded = torch.cat(x_encoded, dim=0)
+            key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_encoded.cpu().detach().numpy())
             if args.gmm_num_components == 1:
                 key_mixture.weights_[0] = 1.0
 
@@ -844,7 +842,27 @@ class Manager(object):
         return out
 
     @torch.no_grad()
-    def sample_conditional_data(self, args, encoder, prompt_pool, relation_data, name, task_id):
+    def sample_vae_data(self, args, encoder, encoded_data, name, task_id):
+        """
+        :param encoded_data: (List) data of relation
+        """
+
+        encoder.eval()
+        data_loader = get_data_loader(args, encoded_data, shuffle=False)
+        
+        # output dict
+        out = {}
+        vae = GaussianVAE(args).to(args.device)
+        key_mixture = vae.fit(data_loader=data_loader, epochs=args.gen_epochs)
+
+        out["replay_key"] = key_mixture
+        return out
+
+    @torch.no_grad()
+    def sample_cvae_data(self, args, encoder, relation_data, name, task_id):
+        """
+        :param encoded_data: (List) data of task
+        """
         encoder.eval()
         data_loader = get_data_loader(args, relation_data, shuffle=False)
         
@@ -1004,10 +1022,20 @@ class Manager(object):
                     encoder.encoder.first_task_embeddings.eval()
                     encoder.freeze_embeddings()
 
+                # Current encoded data
+                cur_training_encoded = convert_data_tokens_to_queries(args, cur_training_data, encoder)
+
                 # memory
                 if args.generative != "ConditionalVAE":
                     for i, relation in enumerate(current_relations):
-                        self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
+                        relation_encoded_training_data = [x for x in cur_training_encoded if x["labels"] == self.rel2id[relation]]
+                        self.memorized_samples[sampler.rel2id[relation]] =  self.sample_memorized_data(
+                                                                                args,
+                                                                                encoder,
+                                                                                relation_encoded_training_data,
+                                                                                f"sampling_relation_{i+1}={relation}",
+                                                                                steps
+                                                                            )
                         rel_id = self.rel2id[relation]
                         replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
                         for e_id in range(args.replay_epochs):
@@ -1016,12 +1044,6 @@ class Manager(object):
                 else:
                     pass
 
-                # Current task data
-                if args.tasktype in ("normal", "oldnew"):
-                    cur_task_data = None
-                else:
-                    cur_task_data = convert_data_tokens_to_queries(args, cur_training_data, encoder)
-                    
                 # all test data
                 all_tasks.append(cur_test_data)
 
@@ -1032,7 +1054,7 @@ class Manager(object):
                 if steps == 0:
                     past_classifier = self._train_normal_classifier(args, encoder, task_predictor, None, swag_task_predictor, self.replayed_key, None, "train_task_predictor_epoch_")
                 else:
-                    past_classifier = self.train_classifier(args, encoder, task_predictor, past_classifier, swag_task_predictor, self.replayed_key, cur_task_data, "train_task_predictor_epoch_")
+                    past_classifier = self.train_classifier(args, encoder, task_predictor, past_classifier, swag_task_predictor, self.replayed_key, cur_training_encoded, "train_task_predictor_epoch_")
 
                 # prediction
                 print("===NON-SWAG===")
