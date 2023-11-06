@@ -69,11 +69,7 @@ class VanillaVAE(BaseVAE):
         :return: (Tensor) List of latent codes
         """
 
-        print(f"linear: {self.encoder[0].weight.requires_grad}")
-        print(f"linear: {self.encoder[3].weight.requires_grad}")
         result = self.encoder(input)
-        print(f"result: {result.requires_grad}")
-        print("")
         # result = torch.flatten(result, start_dim=1)
 
         # Split the result into mu and var components
@@ -181,11 +177,7 @@ class VanillaVAE(BaseVAE):
                 tokens = torch.stack([x.to(self.device) for x in tokens], dim=0) # GPU
                 optimizer.zero_grad()
                 tokens_hat, mu, sigma = self.forward(tokens)
-                print(tokens_hat.requires_grad)
-                print(mu.requires_grad)
-                print(sigma.requires_grad)
                 sigma = torch.exp(sigma)
-                print(sigma.requires_grad)
                 loss = ((tokens - tokens_hat)**2).sum() + (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
                 loss.backward()
                 optimizer.step()

@@ -834,7 +834,6 @@ class Manager(object):
         out["replay_key"] = key_mixture
         return out
 
-    @torch.no_grad()
     def sample_vae_data(self, args, encoder, encoded_data, name, task_id):
         """
         :param encoded_data: (List) data of relation
@@ -851,7 +850,6 @@ class Manager(object):
         out["replay_key"] = key_mixture
         return out
 
-    @torch.no_grad()
     def sample_cvae_data(self, args, encoder, relation_data, name, task_id):
         """
         :param encoded_data: (List) data of task
