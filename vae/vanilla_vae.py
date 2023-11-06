@@ -71,8 +71,8 @@ class VanillaVAE(BaseVAE):
         :return: (Tensor) List of latent codes
         """
         result = self.encoder(input)
-        print(f"ENCODER: {self.encoder[0][0].requires_grad}")
-        print(f"ENCODER: {self.encoder[1][0].requires_grad}")
+        print(f"ENCODER: {self.encoder[0][0].weight.requires_grad}")
+        print(f"ENCODER: {self.encoder[1][0].weight.requires_grad}")
         print(f"result: {result.requires_grad}")
         print("")
         # result = torch.flatten(result, start_dim=1)
