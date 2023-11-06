@@ -1,6 +1,7 @@
 from .base import *
 from .vanilla_vae import *
 from .cvae import *
+from .train import vae_train
 
 # Aliases
 VAE = VanillaVAE

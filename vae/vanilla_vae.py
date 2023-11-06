@@ -3,7 +3,6 @@ from vae import BaseVAE
 from torch import nn
 from torch.nn import functional as F
 from .types_ import *
-from tqdm import tqdm
 
 
 class VanillaVAE(BaseVAE):
@@ -163,26 +162,3 @@ class VanillaVAE(BaseVAE):
         """
 
         return self.forward(x)[0]
-    
-    def fit(self, data_loader: Tensor, epochs):
-        """
-        Given a dataset data, returns a trained VAE object
-        :param data_loader: (Tensor) [N x B x 1536]
-        """
-        optimizer = torch.optim.Adam(self.parameters())
-        for i in range(epochs):
-            td = tqdm(data_loader, desc=f"Train VAE epoch {i+1}/{epochs}")
-            for (_, tokens, _) in td:
-                tokens = torch.stack([x.to(self.device) for x in tokens], dim=0) # GPU
-                optimizer.zero_grad()
-                tokens_hat, mu, sigma = self.forward(tokens)
-                print(tokens_hat.requires_grad)
-                print(mu.requires_grad)
-                print(sigma.requires_grad)
-                sigma = torch.exp(sigma)
-                print(sigma.requires_grad)
-                loss = ((tokens - tokens_hat)**2).sum() + (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
-                loss.backward()
-                optimizer.step()
-                td.set_postfix(loss=loss)
-        return self

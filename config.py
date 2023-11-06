@@ -49,6 +49,7 @@ class Param:
         parser.add_argument("--generative", default="GMM", type=str)
         parser.add_argument("--gmm_num_components", default=1, type=int)
         parser.add_argument("--gen_epochs", default=50, type=int)
+        parser.add_argument("--gen_lr", default=1e-5, type=float)
 
         # loss balancing
         parser.add_argument("--pull_constraint_coeff", default=0.1, type=float)

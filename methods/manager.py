@@ -10,7 +10,6 @@ from methods.multitask.grad_mtl import METHODS as GRAD_METHODS
 from methods.multitask.weight_methods import NashMTL, PCGrad, METHODS as WEIGHT_METHODS
 
 import torch
-import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -815,26 +814,22 @@ class Manager(object):
 
         encoder.eval()
         data_loader = get_data_loader(args, encoded_data, shuffle=False)
-        
+        td = tqdm(data_loader, desc=name)
+
         # output dict
         out = {}
 
-        if args.generative == "gmm":
-            td = tqdm(data_loader, desc=name)
-            # x_data
-            x_encoded = []
-            for (_, tokens, _) in td:
-                tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-                x_encoded.append(tokens)
-                # x_encoded.append(encoder(tokens)) # When encoded_data is not encoded but is in original format (tokens)
-            x_encoded = torch.cat(x_encoded, dim=0)
-            key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_encoded.cpu().detach().numpy())
-            if args.gmm_num_components == 1:
-                key_mixture.weights_[0] = 1.0
+        # x_data
+        x_encoded = []
 
-        else:
-            vae = GaussianVAE(args).to(args.device)
-            key_mixture = vae.fit(data_loader=data_loader, epochs=args.gen_epochs)
+        for (_, tokens, _) in td:
+            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+            x_encoded.append(tokens)
+            # x_encoded.append(encoder(tokens)) # When encoded_data is not encoded but is in original format (tokens)
+        x_encoded = torch.cat(x_encoded, dim=0)
+        key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_encoded.cpu().detach().numpy())
+        if args.gmm_num_components == 1:
+            key_mixture.weights_[0] = 1.0
 
         out["replay_key"] = key_mixture
         return out
@@ -851,7 +846,7 @@ class Manager(object):
         # output dict
         out = {}
         vae = GaussianVAE(args).to(args.device)
-        key_mixture = vae.fit(data_loader=data_loader, epochs=args.gen_epochs)
+        key_mixture = vae_train(autoencoder=vae, data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
 
         out["replay_key"] = key_mixture
         return out
