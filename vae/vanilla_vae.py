@@ -17,7 +17,7 @@ class VanillaVAE(BaseVAE):
         self.latent_dim = latent_dim
 
         modules = []
-        if hidden_dims is None:
+        if not hidden_dims:
             hidden_dims = [768,]
 
         # Changing in_channels
