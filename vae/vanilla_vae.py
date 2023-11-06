@@ -71,15 +71,15 @@ class VanillaVAE(BaseVAE):
         :return: (Tensor) List of latent codes
         """
         result = self.encoder(input)
+        print(f"ENCODER: {self.encoder.requires_grad}")
+        print(f"result: {result.requires_grad}")
+        print("")
         # result = torch.flatten(result, start_dim=1)
 
         # Split the result into mu and var components
         # of the latent Gaussian distribution
         mu = self.fc_mu(result)
         log_var = self.fc_var(result)
-
-        print(mu.requires_grad)
-        print(log_var.requires_grad)
 
         return [mu, log_var]
 
