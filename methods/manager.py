@@ -1026,7 +1026,7 @@ class Manager(object):
                 # memory
                 if args.generative != "ConditionalVAE":
                     for i, relation in enumerate(current_relations):
-                        relation_encoded_training_data = [x for x in cur_training_encoded if x["labels"] == self.rel2id[relation]]
+                        relation_encoded_training_data = [x for x in cur_training_encoded if x["relation"] == self.rel2id[relation]]
                         self.memorized_samples[sampler.rel2id[relation]] =  self.sample_memorized_data(
                                                                                 args,
                                                                                 encoder,
