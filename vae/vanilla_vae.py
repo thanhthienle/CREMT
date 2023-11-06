@@ -68,6 +68,9 @@ class VanillaVAE(BaseVAE):
         :param input: (Tensor) Input tensor to encoder [N x C x H x W]
         :return: (Tensor) List of latent codes
         """
+
+        print(f"linear: {self.encoder[0].weight.requires_grad}")
+        print(f"linear: {self.encoder[3].weight.requires_grad}")
         result = self.encoder(input)
         print(f"result: {result.requires_grad}")
         print("")
