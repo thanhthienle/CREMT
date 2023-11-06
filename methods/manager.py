@@ -816,7 +816,10 @@ class Manager(object):
         encoder.eval()
         data_loader = get_data_loader(args, relation_data, shuffle=False)
         print("\nHAHAHAHAHAH")
-        print(data_loader[0][1].type())
+        for (labels, tokens, _) in data_loader:
+            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+            print(tokens.type())
+            break
         
         # output dict
         out = {}
