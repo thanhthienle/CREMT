@@ -27,7 +27,7 @@ class VanillaVAE(BaseVAE):
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
-                    nn.Linear(changing_in_channels, out_channels=h_dim),
+                    nn.Linear(changing_in_channels, h_dim),
                     nn.BatchNorm1d(h_dim),
                     nn.LeakyReLU())
             )
