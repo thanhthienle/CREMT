@@ -846,7 +846,7 @@ class Manager(object):
         # output dict
         out = {}
         vae = GaussianVAE(args).to(args.device)
-        key_mixture = vae_train(autoencoder=vae, data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
+        key_mixture = vae.fit(autoencoder=vae, data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
 
         out["replay_key"] = key_mixture
         return out
