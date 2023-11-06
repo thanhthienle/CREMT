@@ -172,8 +172,8 @@ class VanillaVAE(BaseVAE):
         optimizer = torch.optim.Adam(self.parameters())
         for i in range(epochs):
             td = tqdm(data_loader, desc=f"Train VAE epoch {i+1}/{epochs}")
-            for _, tokens, _ in td:
-                tokens = tokens.to(self.device) # GPU
+            for (_, tokens, _) in td:
+                tokens = torch.stack([x.to(self.device) for x in tokens], dim=0) # GPU
                 optimizer.zero_grad()
                 tokens_hat, mu, sigma = self.forward(tokens)
                 sigma = torch.exp(sigma)
