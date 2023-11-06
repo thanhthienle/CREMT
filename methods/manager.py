@@ -832,7 +832,8 @@ class Manager(object):
                 key_mixture.weights_[0] = 1.0
 
         else:
-            key_mixture = GaussianVAE(args).fit(data_loader=data_loader, epochs=args.gen_epochs)
+            vae = GaussianVAE(args).to(args.device)
+            key_mixture = vae.fit(data_loader=data_loader, epochs=args.gen_epochs)
 
         out["replay_key"] = key_mixture
         return out
