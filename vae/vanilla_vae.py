@@ -152,7 +152,7 @@ class VanillaVAE(BaseVAE):
         z = z.to(current_device)
 
         samples = self.decode(z)
-        return samples
+        return [samples]
 
     def generate(self, x: Tensor, **kwargs) -> Tensor:
         """

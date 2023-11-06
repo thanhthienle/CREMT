@@ -845,9 +845,9 @@ class Manager(object):
         # output dict
         out = {}
         vae = GaussianVAE(args).to(args.device)
-        key_mixture = vae.fit(data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
+        vae.fit(data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
 
-        out["replay_key"] = key_mixture
+        out["replay_key"] = vae
         return out
 
     def sample_cvae_data(self, args, encoder, relation_data, name, task_id):
