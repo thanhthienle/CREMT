@@ -45,8 +45,10 @@ class Param:
         # momentum
         parser.add_argument("--sgd_momentum", default=0.1, type=float)
 
-        # gmm
+        # generative
+        parser.add_argument("--generative", default="GMM", type=str)
         parser.add_argument("--gmm_num_components", default=1, type=int)
+        parser.add_argument("--gen_epochs", default=50, type=int)
 
         # loss balancing
         parser.add_argument("--pull_constraint_coeff", default=0.1, type=float)
