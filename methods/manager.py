@@ -816,7 +816,7 @@ class Manager(object):
         encoder.eval()
         data_loader = get_data_loader(args, relation_data, shuffle=False)
         print("\nHAHAHAHAHAH")
-        print(data_loader[0].type())
+        print(data_loader[0][1].type())
         
         # output dict
         out = {}
