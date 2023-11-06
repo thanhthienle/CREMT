@@ -1028,7 +1028,9 @@ class Manager(object):
                                                                                 steps
                                                                             )
                         rel_id = self.rel2id[relation]
-                        replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
+                        replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0]
+                        print(replay_key)
+                        replay_key = replay_key.astype("float32")
                         for e_id in range(args.replay_epochs):
                             for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
                                 self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
