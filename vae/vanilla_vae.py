@@ -9,14 +9,13 @@ from tqdm import tqdm
 class VanillaVAE(BaseVAE):
     def __init__(self, args,
                  in_channels: int = 1536,
-                 latent_dim: int = 256,
+                 latent_dim: int = 512,
                  hidden_dims: List = [],
                  **kwargs) -> None:
         super(VanillaVAE, self).__init__()
 
         self.latent_dim = latent_dim
 
-        modules = []
         if not hidden_dims:
             hidden_dims = [768, 512]
 
@@ -24,13 +23,13 @@ class VanillaVAE(BaseVAE):
         changing_in_channels = in_channels
 
         # Build Encoder
+        modules = []
         for h_dim in hidden_dims:
-            modules.append(
-                nn.Sequential(
-                    nn.Linear(changing_in_channels, h_dim),
-                    nn.BatchNorm1d(h_dim),
-                    nn.LeakyReLU())
-            )
+            modules.extend([
+                nn.Linear(changing_in_channels, h_dim),
+                nn.BatchNorm1d(h_dim),
+                nn.LeakyReLU(),
+            ])
             changing_in_channels = h_dim
 
         self.encoder = nn.Sequential(*modules)
@@ -47,12 +46,11 @@ class VanillaVAE(BaseVAE):
         hidden_dims.reverse()
 
         for i in range(len(hidden_dims) - 1):
-            modules.append(
-                nn.Sequential(
-                    nn.Linear(hidden_dims[i], hidden_dims[i + 1]),
-                    nn.BatchNorm2d(hidden_dims[i + 1]),
-                    nn.LeakyReLU())
-            )
+            modules.append([
+                nn.Linear(hidden_dims[i], hidden_dims[i + 1]),
+                nn.BatchNorm1d(hidden_dims[i + 1]),
+                nn.LeakyReLU(),
+            ])
 
         self.decoder = nn.Sequential(*modules)
 
