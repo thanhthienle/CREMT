@@ -9,7 +9,7 @@ from tqdm import tqdm
 class VanillaVAE(BaseVAE):
     def __init__(self, args,
                  in_channels: int = 1536,
-                 latent_dim: int = 512,
+                 latent_dim: int = 256,
                  hidden_dims: List = [],
                  **kwargs) -> None:
         super(VanillaVAE, self).__init__()
@@ -18,7 +18,7 @@ class VanillaVAE(BaseVAE):
 
         modules = []
         if not hidden_dims:
-            hidden_dims = [768,]
+            hidden_dims = [768, 512]
 
         # Changing in_channels
         changing_in_channels = in_channels
@@ -71,7 +71,8 @@ class VanillaVAE(BaseVAE):
         :return: (Tensor) List of latent codes
         """
         result = self.encoder(input)
-        print(f"ENCODER: {self.encoder.requires_grad}")
+        print(f"ENCODER: {self.encoder[0][0].requires_grad}")
+        print(f"ENCODER: {self.encoder[1][0].requires_grad}")
         print(f"result: {result.requires_grad}")
         print("")
         # result = torch.flatten(result, start_dim=1)
