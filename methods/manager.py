@@ -37,8 +37,6 @@ def convert_data_tokens_to_queries(args, data, encoder):
     new_data = copy.deepcopy(data)
     for i in range(len(new_data)):
         new_data[i]["tokens"] = queries[i]
-        print(new_data[i])
-        exit()
     return new_data
 
 
