@@ -46,7 +46,7 @@ class VanillaVAE(BaseVAE):
         hidden_dims.reverse()
 
         for i in range(len(hidden_dims) - 1):
-            modules.append([
+            modules.extend([
                 nn.Linear(hidden_dims[i], hidden_dims[i + 1]),
                 nn.BatchNorm1d(hidden_dims[i + 1]),
                 nn.LeakyReLU(),
