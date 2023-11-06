@@ -14,11 +14,12 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sklearn.mixture import GaussianMixture
+from vae import *
+
 import copy
 import random
 import numpy as np
-
-from sklearn.mixture import GaussianMixture
 
 from tqdm import tqdm, trange
 
@@ -814,24 +815,36 @@ class Manager(object):
     def sample_memorized_data(self, args, encoder, prompt_pool, relation_data, name, task_id):
         encoder.eval()
         data_loader = get_data_loader(args, relation_data, shuffle=False)
-        td = tqdm(data_loader, desc=name)
-
+        
         # output dict
         out = {}
 
-        # x_data
-        x_key = []
+        if args.generative == "gmm":
+            td = tqdm(data_loader, desc=name)
+            # x_data
+            x_key = []
+            for (labels, tokens, _) in td:
+                tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+                x_key.append(encoder(tokens))
+            x_key = torch.cat(x_key, dim=0)
+            key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_key.cpu().detach().numpy())
+            if args.gmm_num_components == 1:
+                key_mixture.weights_[0] = 1.0
 
-        for step, (labels, tokens, _) in enumerate(td):
-            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-            x_key.append(encoder(tokens))
+        else:
+            key_mixture = GaussianVAE().fit(data_loader=data_loader, epochs=10)
 
-        x_key = torch.cat(x_key, dim=0)
+        out["replay_key"] = key_mixture
+        return out
 
-        key_mixture = GaussianMixture(n_components=args.gmm_num_components, random_state=args.seed).fit(x_key.cpu().detach().numpy())
-
-        if args.gmm_num_components == 1:
-            key_mixture.weights_[0] = 1.0
+    @torch.no_grad()
+    def sample_conditional_data(self, args, encoder, prompt_pool, relation_data, name, task_id):
+        encoder.eval()
+        data_loader = get_data_loader(args, relation_data, shuffle=False)
+        
+        # output dict
+        out = {}
+        key_mixture = GaussianVAE().fit(data_loader=data_loader, epochs=10)
 
         out["replay_key"] = key_mixture
         return out
@@ -986,13 +999,16 @@ class Manager(object):
                     encoder.freeze_embeddings()
 
                 # memory
-                for i, relation in enumerate(current_relations):
-                    self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
-                    rel_id = self.rel2id[relation]
-                    replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
-                    for e_id in range(args.replay_epochs):
-                        for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
-                            self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
+                if args.generative != "ConditionalVAE":
+                    for i, relation in enumerate(current_relations):
+                        self.memorized_samples[sampler.rel2id[relation]] = self.sample_memorized_data(args, encoder, None, training_data[relation], f"sampling_relation_{i+1}={relation}", steps)
+                        rel_id = self.rel2id[relation]
+                        replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
+                        for e_id in range(args.replay_epochs):
+                            for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
+                                self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
+                else:
+                    pass
 
                 # Current task data
                 if args.tasktype in ("normal", "oldnew"):
