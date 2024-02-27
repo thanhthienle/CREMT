@@ -1022,7 +1022,6 @@ class Manager(object):
                                                                                 args, encoder,
                                                                                 relation_encoded_training_data,
                                                                                 f"sampling_relation_{i+1} - {relation}",
-                                                                                steps
                                                                             )
                         rel_id = self.rel2id[relation]
                         replay_key = self.memorized_samples[rel_id]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e)[0].astype("float32")
