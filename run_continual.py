@@ -1,6 +1,6 @@
 import yaml
 import torch
-from config import Param, SIZE_DIM
+from config import Param
 from methods.utils import setup_seed
 from methods.manager import Manager
 
@@ -33,10 +33,6 @@ if __name__ == "__main__":
 
     # rel_per_task
     args.rel_per_task = 8 if args.dataname == "FewRel" else 4
-
-    # BERT
-    args.bert_path = f"../models/bert-{args.bert_size}-uncased"
-    args.encoder_output_size = SIZE_DIM[args.bert_size]
 
     # Run
     run(args)

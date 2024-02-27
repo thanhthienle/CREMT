@@ -16,7 +16,10 @@ class data_set(Dataset):
 
     def collate_fn(self, data):
         label = torch.tensor([item[0]["relation"] for item in data])
-        tokens = [torch.tensor(item[0]["tokens"]) for item in data]
+        if isinstance(data[0][0]["tokens"], torch.Tensor):
+            tokens = [item[0]["tokens"].clone().detach() for item in data]
+        else:
+            tokens = [torch.tensor(item[0]["tokens"]) for item in data]
         ind = [item[1] for item in data]
 
         try:

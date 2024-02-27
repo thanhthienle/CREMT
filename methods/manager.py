@@ -57,7 +57,7 @@ class Manager(object):
                     print("INITIALIZED PAST ALPHAS")
                     self.past_alphas = [1.0,]
             except:
-                raise NotImplementedError()
+                raise NotImplementedError("This task type is not defined.")
         else:
             self.train_classifier = self._train_normal_classifier
 
@@ -66,17 +66,66 @@ class Manager(object):
         except:
             raise NotImplementedError()
 
+    def _train_classifier_naive(self, args, encoder, classifier, current_task_data, name=""):
+        encoder.eval()
+        classifier.train()
+        optimizer = torch.optim.Adam([dict(params=classifier.parameters(), lr=args.classifier_lr),])
+
+        def train_data(data_loader_, name=name):
+            losses = []
+            td = tqdm(data_loader_, desc=name)
+
+            sampled = 0
+            hits = 0
+
+            for labels, queries, _ in td:
+                optimizer.zero_grad()
+                classifier.zero_grad()
+
+                sampled += len(labels)
+                targets = labels.type(torch.LongTensor).to(args.device)
+                queries = torch.stack([x.to(args.device) for x in queries], dim=0)
+
+                # train
+                logits = classifier(queries)
+                loss = F.cross_entropy(input=logits, target=targets, reduction="mean")
+                losses.append(loss.item())
+                loss.backward()
+                
+                # prediction
+                _, pred = logits.max(1)
+                hits += (pred == targets).float().sum().data.cpu().numpy().item()
+
+                # params update
+                torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.max_grad_norm)
+                optimizer.step()
+                classifier.zero_grad()
+                
+                # display
+                td.set_postfix(
+                    loss = np.array(losses).mean(),
+                    acc = hits / sampled,
+                )
+        
+        # Train
+        current_data_loader = get_data_loader(args, current_task_data, shuffle=True)
+        for e_id in range(args.classifier_epochs):
+            train_data(current_data_loader, f"{name}{e_id + 1}")
+        return classifier
+
     def _train_mtl_classifier_distill(self, args, encoder, classifier, past_classifier, swag_classifier, replayed_epochs, current_task_data, name=""):
         encoder.eval()
         classifier.train()
-        swag_classifier.train()
-        # past_classifier = copy.deepcopy(classifier)
+        overfit_classifier = copy.deepcopy(classifier)
+        overfit_classifier.train()
+        overfit_classifier = self._train_classifier_naive(args, encoder, overfit_classifier, current_task_data, name="train_naive_classifier_epoch_")
+        overfit_classifier.eval()
         past_classifier.eval()
         
         optimizer = torch.optim.Adam([dict(params=classifier.parameters(), lr=args.classifier_lr),])
 
         def train_data(data_loader_, name=name):
-            distill_losses, losses = [], []
+            distill_past_losses, distill_overfit_losses, past_losses, losses = [], [], [], []
             td = tqdm(data_loader_, desc=name)
 
             sampled = 0
@@ -87,26 +136,25 @@ class Manager(object):
             total_past_hits = 0
             total_cur_hits = 0
 
-            for past_batch, current_batch in td:
+            for past_batch, current_gauss_batch in td:
                 optimizer.zero_grad()
-                classifier.zero_grad()
 
                 past_labels, past_queries, _ = past_batch
-                cur_labels, cur_tokens, _ = current_batch
+                cur_labels, cur_tokens, _ = current_gauss_batch
 
-                # batching
+                # get past_distill_targets
                 past_sampled += len(past_labels)
                 past_targets = past_labels.type(torch.LongTensor).to(args.device)
                 past_queries = torch.stack([x.to(args.device) for x in past_queries], dim=0)
-                if not args.ETF:
-                    with torch.no_grad():
-                        past_distill_targets = F.softmax(past_classifier(past_queries), dim=1, dtype=torch.float32)
-                else:
-                    past_distill_targets = F.softmax(etf_logitize(args, past_targets), dim=1, dtype=torch.float32)
+                with torch.no_grad():
+                    past_distill_targets = F.softmax(past_classifier(past_queries), dim=1, dtype=torch.float32)
 
+                # get overfit_targets
                 cur_sampled += len(cur_labels)
                 cur_targets = cur_labels.type(torch.LongTensor).to(args.device)
                 cur_queries = torch.stack([x.to(args.device) for x in cur_tokens], dim=0)
+                with torch.no_grad():
+                    overfit_targets = F.softmax(overfit_classifier(cur_queries), dim=1, dtype=torch.float32)
 
                 sampled += past_sampled + cur_sampled
 
@@ -115,25 +163,44 @@ class Manager(object):
                 past_reps = classifier(past_queries)
 
                 # loss components
-                distill_loss = F.cross_entropy(input=past_reps, target=past_distill_targets, reduction="mean")
+                distill_loss_past = F.cross_entropy(input=past_reps, target=past_distill_targets, reduction="mean")
+                distill_loss_overfit = F.cross_entropy(input=cur_reps, target=overfit_targets, reduction="mean")
+                past_loss = F.cross_entropy(input=past_reps, target=past_targets, reduction="mean")
                 loss = F.cross_entropy(input=cur_reps, target=cur_targets, reduction="mean")
                 
                 # Backward and optimize
-                distill_loss.backward()
-                distill_shared_grad = []
+                distill_loss_past.backward(retain_graph=True)
+                distill_past_grad = []
                 for param in classifier.parameters():
-                    distill_shared_grad.append(param.grad.detach().data.clone().flatten())
+                    distill_past_grad.append(param.grad.detach().data.clone().flatten())
                     param.grad.zero_()
-                distill_shared_grad = torch.cat(distill_shared_grad, dim=0)
+                distill_past_grad = torch.cat(distill_past_grad, dim=0)
+
+                distill_loss_overfit.backward(retain_graph=True)
+                distill_overfit_grad = []
+                for param in classifier.parameters():
+                    distill_overfit_grad.append(param.grad.detach().data.clone().flatten())
+                    param.grad.zero_()
+                distill_overfit_grad = torch.cat(distill_overfit_grad, dim=0)
+
+                past_loss.backward()
+                past_grad = []
+                for param in classifier.parameters():
+                    past_grad.append(param.grad.detach().data.clone().flatten())
+                    param.grad.zero_()
+                past_grad = torch.cat(past_grad, dim=0)
 
                 loss.backward()
-                loss_shared_grad = []
+                current_grad = []
                 for param in classifier.parameters():
-                    loss_shared_grad.append(param.grad.detach().data.clone().flatten())
+                    current_grad.append(param.grad.detach().data.clone().flatten())
                     param.grad.zero_()
-                loss_shared_grad = torch.cat(loss_shared_grad, dim=0)
+                current_grad = torch.cat(current_grad, dim=0)
 
-                shared_grad = GRAD_METHODS[args.mtl](torch.stack([distill_shared_grad, loss_shared_grad]), args.c)["updating_grad"]
+                shared_grad = GRAD_METHODS[args.mtl](torch.stack(
+                    [distill_past_grad, distill_overfit_grad, past_grad, current_grad]),
+                    args.c
+                )["updating_grad"]
 
                 total_length = 0
                 for param in classifier.parameters():
@@ -143,7 +210,9 @@ class Manager(object):
                     ].reshape(param.shape)
                     total_length += length
 
-                distill_losses.append(distill_loss.item())
+                distill_past_losses.append(distill_loss_past.item())
+                distill_overfit_losses.append(distill_loss_overfit.item())
+                past_losses.append(past_loss.item())
                 losses.append(loss.item())
 
                 # prediction
@@ -165,30 +234,31 @@ class Manager(object):
 
                 # display
                 td.set_postfix(
-                    distill_loss = np.array(distill_losses).mean(),
+                    distill_past_loss = np.array(distill_past_losses).mean(),
+                    distill_overfit_loss = np.array(distill_overfit_losses).mean(),
+                    past_loss = np.array(past_losses).mean(),
                     loss = np.array(losses).mean(),
                     past_acc = total_past_hits / past_sampled,
                     cur_acc = total_cur_hits / cur_sampled,
                     ovr_acc = total_hits / sampled,
                 )
 
-        # Validation set
-        validation_data = [instance for instance in flatten_list(replayed_epochs) if instance["relation"] in self.relids_of_task[-1]]
-        # validation_data = [instance for instance in flatten_list(replayed_epochs)]
-
-        past_relids = [relid for sublist in self.relids_of_task[:-1] for relid in sublist]
-        # num_oldtask_samples = min(args.replay_s_e_e, int(len(current_task_data) / (len(self.relids_of_task) - 1)))
+        current_relids = self.relids_of_task[-1]
         oversampling_size = args.replay_s_e_e * (len(self.relids_of_task) - 1)
 
-        consecutive_satisfaction = 0
+        # consecutive_satisfaction = 0
         for e_id in range(args.classifier_epochs):
             replay_data = replayed_epochs[e_id % args.replay_epochs]
             past_data = []
-            for rel_id in past_relids:
-                past_data.extend([instance for instance in replay_data if instance["relation"] == rel_id])
+            current_gauss_data = []
+            for instance in replay_data:
+                if instance["relation"] in current_relids:
+                    current_gauss_data.append(instance)
+                else:
+                    past_data.append(instance)
             combined_data_loader = zip(
                 get_data_loader(args, past_data, shuffle=True),
-                get_data_loader(args, random.choices(current_task_data, k=oversampling_size), shuffle=True)
+                get_data_loader(args, random.choices(current_gauss_data, k=oversampling_size), shuffle=True),
             )
             train_data(combined_data_loader, f"{name}{e_id + 1}")
 
@@ -1021,10 +1091,9 @@ class Manager(object):
                     for i, relation in enumerate(current_relations):
                         relation_encoded_training_data = [x for x in cur_training_encoded if x["relation"] == self.rel2id[relation]]
                         self.memorized_samples[sampler.rel2id[relation]] =  self.sample_memorized_data(
-                                                                                args,
-                                                                                encoder,
+                                                                                args, encoder,
                                                                                 relation_encoded_training_data,
-                                                                                f"sampling_relation_{i+1}={relation}",
+                                                                                f"sampling_relation_{i+1} - {relation}",
                                                                                 steps
                                                                             )
                         rel_id = self.rel2id[relation]
