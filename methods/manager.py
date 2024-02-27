@@ -18,7 +18,7 @@ from vae import *
 
 import copy
 import random
-import numpy as np
+import numpy as npå
 
 from tqdm import tqdm, trange
 
@@ -767,117 +767,8 @@ class Manager(object):
         for e_id in range(args.encoder_epochs):
             train_data(data_loader, f"train_embeddings_epoch_{e_id + 1}", e_id)
 
-    def train_prompt_pool(self, args, encoder, prompt_pool, training_data, task_id):
-        encoder.eval()
-        classifier = Classifier(args=args).to(args.device)
-        classifier.train()
-        modules = [classifier, prompt_pool]
-        if task_id == 0 and args.encoder_seprarate_embeddings == True:
-            print("Separating Embeddings")
-            modules.append(encoder.encoder.embeddings)
-        modules = nn.ModuleList(modules)
-        modules_parameters = modules.parameters()
-
-        optimizer = torch.optim.Adam([{"params": modules_parameters, "lr": args.prompt_pool_lr}])
-
-        # get new training data (label, tokens, key) for prompt pool training
-        data_loader = get_data_loader(args, training_data, shuffle=True)
-        new_training_data = []
-        td = tqdm(data_loader, desc=f"get_prompt_key_task_{task_id+1}")
-        for step, (labels, tokens, _) in enumerate(td):
-            # batching
-            targets = labels.type(torch.LongTensor).to(args.device)
-            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-            # encoder forward
-            encoder_out = encoder(tokens)
-
-            tokens = tokens.cpu().detach().numpy()
-            x_key = encoder_out.cpu().detach().numpy()
-            # add to new training data
-            for i in range(len(labels)):
-                new_training_data.append({"relation": labels[i], "tokens": tokens[i], "key": x_key[i]})
-            td.set_postfix()
-
-        # new data loader
-        data_loader = get_data_loader(args, new_training_data, shuffle=True)
-
-        def train_data(data_loader_, name="", e_id=0):
-            losses = []
-            accuracies = []
-            td = tqdm(data_loader_, desc=name)
-
-            sampled = 0
-            total_hits = 0
-
-            replay_sampled = 0
-            replay_total_hits = 0
-
-            for step, (labels, tokens, keys, _) in enumerate(td):
-                optimizer.zero_grad()
-
-                # batching
-                sampled += len(labels)
-                targets = labels.type(torch.LongTensor).to(args.device)
-                tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
-                x_key = torch.stack([x.to(args.device) for x in keys], dim=0)
-
-                # encoder forward
-                encoder_out = encoder(tokens, prompt_pool, x_key)
-
-                # classifier forward
-                reps = classifier(encoder_out)
-
-                # loss components
-                prompt_reduce_sim_loss = -args.pull_constraint_coeff * encoder_out["reduce_sim"]
-
-                # prediction
-                probs = F.softmax(reps, dim=1)
-                _, pred = probs.max(1)
-                total_hits += (pred == targets).float().sum().data.cpu().numpy().item()
-
-                # replay
-                if task_id != 0 and args.replay_ratio != 0:
-                    try:
-                        (replay_labels, replay_tokens, _) = next(replay_iterator)
-                    except:
-                        replay_size = max(1, round(args.batch_size * args.replay_ratio))
-                        replay_iterator = iter(get_data_loader(args, random.choice(self.replayed_data), shuffle=True, batch_size=replay_size))
-                        (replay_labels, replay_tokens, _) = next(replay_iterator)
-
-                    # batching
-                    replay_sampled += len(replay_labels)
-                    replay_targets = replay_labels.type(torch.LongTensor).to(args.device)
-                    replay_tokens = torch.stack([x.to(args.device) for x in replay_tokens], dim=0)
-
-                    # classifier forward
-                    replay_reps = classifier(replay_tokens)
-
-                    # prediction
-                    replay_probs = F.softmax(replay_reps, dim=1)
-                    _, replay_pred = replay_probs.max(1)
-                    replay_total_hits += (replay_pred == replay_targets).float().sum().data.cpu().numpy().item()
-
-                    CE_loss = F.cross_entropy(input=torch.cat([reps, replay_reps], dim=0), target=torch.cat([targets, replay_targets], dim=0), reduction="mean")
-                else:
-                    CE_loss = F.cross_entropy(input=reps, target=targets, reduction="mean")
-
-                # losses
-                loss = CE_loss + prompt_reduce_sim_loss
-                losses.append(loss.item())
-                loss.backward()
-
-                # params update
-                torch.nn.utils.clip_grad_norm_(modules_parameters, args.max_grad_norm)
-                optimizer.step()
-
-                # display
-                td.set_postfix(loss=np.array(losses).mean(), acc=total_hits / sampled, replay=f"{replay_total_hits}/{replay_sampled}")
-
-        for e_id in range(args.prompt_pool_epochs):
-            train_data(data_loader, f"train_prompt_pool_epoch_{e_id + 1}", e_id)
-
     @torch.no_grad()
-    def sample_gmm_data(self, args, encoder, encoded_data, name, task_id):
+    def sample_gmm_data(self, args, encoder, encoded_data, name):
         """
         :param encoded_data: (List) data of relation
         """
@@ -904,34 +795,64 @@ class Manager(object):
         out["replay_key"] = key_mixture
         return out
 
-    def sample_vae_data(self, args, encoder, encoded_data, name, task_id):
+    def sample_vae_data(self, args, encoder, encoded_data, name):
         """
         :param encoded_data: (List) data of relation
         """
+        print(name)
 
         encoder.eval()
-        data_loader = get_data_loader(args, encoded_data, shuffle=False)
+        data_loader = get_data_loader(args, encoded_data, shuffle=True)
         
+        # Num_training_data
+        num_total_train = len(encoded_data)
+
         # output dict
         out = {}
         vae = GaussianVAE(args).to(args.device)
-        vae.fit(data_loader=data_loader, epochs=args.gen_epochs, learning_rate=args.gen_lr)
-
+        vae.fit(
+            data_loader=data_loader,
+            num_total_train=num_total_train,
+            epochs=args.gen_epochs,
+            learning_rate=args.gen_lr
+        )
         out["replay_key"] = vae
         return out
 
-    def sample_cvae_data(self, args, encoder, relation_data, name, task_id):
+    def sample_cvae_data(self, args, encoder, encoded_data, name):
         """
         :param encoded_data: (List) data of task
         """
+        print(name)
+
+        unique_classes = list(set(
+            [item["relation"] for item in encoded_data]
+        ))
+        glob2task_relid = {}
+        for i, class_id in enumerate(unique_classes):
+            glob2task_relid[class_id] = i
+        
+        local_encoded_data = copy.deepcopy(encoded_data)
+        for i, item in enumerate(local_encoded_data):
+            local_encoded_data[i]["relation"] = glob2task_relid[item["relation"]]
+
         encoder.eval()
-        data_loader = get_data_loader(args, relation_data, shuffle=False)
+        data_loader = get_data_loader(args, local_encoded_data, shuffle=True)
+
+        # Num_training_data
+        num_total_train = len(local_encoded_data)
         
         # output dict
         out = {}
-        key_mixture = GaussianVAE().fit(data_loader=data_loader, epochs=10)
+        cvae = ConditionalVAE(args, glob2task_relid).to(args.device)
+        cvae.fit(
+            data_loader=data_loader,
+            num_total_train=num_total_train,
+            epochs=args.gen_epochs,
+            learning_rate=args.gen_lr
+        )
 
-        out["replay_key"] = key_mixture
+        out["replay_key"] = cvae
         return out
 
     @torch.no_grad()
@@ -1019,10 +940,8 @@ class Manager(object):
             # convert
             self.id2taskid = {}
 
-            # Saving
-            if not os.path.exists("fewrel_crest"): os.mkdir("fewrel_crest")
-
             # model
+            encoder_list = []
             encoder = BertRelationEncoder(config=args).to(args.device)
 
             # past classifier
@@ -1078,10 +997,19 @@ class Manager(object):
 
                 # train encoder
                 if steps == 0:
-                    self.train_embeddings(args, encoder, final_linear, cur_training_data, task_id=steps)
-                    encoder.encoder.first_task_embeddings = copy.deepcopy(encoder.encoder.embeddings)
-                    encoder.encoder.first_task_embeddings.eval()
-                    encoder.freeze_embeddings()
+                    if not args.encoder_checkpoint or not os.path.exists("./ckpt/encoder.pt"):
+                        self.train_embeddings(args, encoder, final_linear, cur_training_data, task_id=steps)
+                        encoder.encoder.first_task_embeddings = copy.deepcopy(encoder.encoder.embeddings)
+                        encoder.encoder.first_task_embeddings.eval()
+                        encoder.freeze_embeddings()
+                        torch.save(encoder.state_dict(), "./ckpt/encoder.pt")
+                    else:
+                        print("Load encoder from checkpoint!")
+                        encoder.encoder.first_task_embeddings = copy.deepcopy(encoder.encoder.embeddings)
+                        encoder.load_state_dict(torch.load("./ckpt/encoder.pt"))
+
+                    for i in range(30):
+                        encoder_list.append(copy.deepcopy(encoder).to(args.device))
 
                 # Current encoded data
                 cur_training_encoded = convert_data_tokens_to_queries(args, cur_training_data, encoder)
@@ -1090,7 +1018,7 @@ class Manager(object):
                 if args.generative != "ConditionalVAE":
                     for i, relation in enumerate(current_relations):
                         relation_encoded_training_data = [x for x in cur_training_encoded if x["relation"] == self.rel2id[relation]]
-                        self.memorized_samples[sampler.rel2id[relation]] =  self.sample_memorized_data(
+                        self.memorized_samples[self.rel2id[relation]] =  self.sample_memorized_data(
                                                                                 args, encoder,
                                                                                 relation_encoded_training_data,
                                                                                 f"sampling_relation_{i+1} - {relation}",
@@ -1102,7 +1030,19 @@ class Manager(object):
                             for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
                                 self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
                 else:
-                    pass
+                    self.memorized_samples[steps] = self.sample_memorized_data(
+                                                        args,
+                                                        encoder,
+                                                        cur_training_encoded,
+                                                        f"Fitting_task_{steps+1}",
+                                                    )
+                    for i, relation in enumerate(current_relations):
+                        rel_id = self.rel2id[relation]
+                        replay_key = self.memorized_samples[steps]["replay_key"].sample(args.replay_epochs * args.replay_s_e_e, label=rel_id)[0].astype("float32")
+                        for e_id in range(args.replay_epochs):
+                            for x_encoded in replay_key[e_id * args.replay_s_e_e : (e_id + 1) * args.replay_s_e_e]:
+                                self.replayed_key[e_id].append({"relation": rel_id, "tokens": x_encoded})
+                        print(f"Done sampling relation {i+1}: {relation}")
 
                 # all test data
                 all_tasks.append(cur_test_data)
@@ -1135,20 +1075,6 @@ class Manager(object):
                 test_cur.append(cur_acc)
                 test_total.append(total_acc)
 
-                # print("===SWAG===")
-                # writer.write("===SWAG===\n")
-                # results = []
-                # for i, i_th_test_data in enumerate(all_tasks):
-                #     results.append([len(i_th_test_data), self.evaluate_strict_model(args, encoder, swag_task_predictor, i_th_test_data, f"test_task_{i+1}", steps)])
-                # cur_acc = results[-1][1]
-                # total_acc = sum([result[0] * result[1] for result in results]) / sum([result[0] for result in results])
-                # print(f"current test accuracy: {cur_acc}")
-                # print(f"history test accuracy: {total_acc}")
-                # writer.write(f"current test accuracy: {cur_acc}\n")
-                # writer.write(f"history test accuracy: {total_acc}\n")
-                # test_cur.append(cur_acc)
-                # test_total.append(total_acc)
-
                 print("===UNTIL-NOW==")
                 writer = open(f"live_{args.logname}", "a")
                 writer.write("===UNTIL-NOW==\n")
@@ -1163,6 +1089,3 @@ class Manager(object):
                     print(x)
                     writer.write(f"{x}\n")
                 writer.close()
-
-            torch.save(encoder.state_dict(), "fewrel_crest/encoder_state.pt")
-            torch.save(task_predictor.state_dict(), "fewrel_crest/classifier_state.pt")

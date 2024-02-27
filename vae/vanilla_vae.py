@@ -9,7 +9,7 @@ from tqdm import tqdm
 class VanillaVAE(BaseVAE):
     def __init__(self, args,
                  in_channels: int = 1536,
-                 latent_dim: int = 512,
+                 latent_dim: int = 64,
                  hidden_dims: List = [],
                  **kwargs) -> None:
         super(VanillaVAE, self).__init__()
@@ -17,7 +17,7 @@ class VanillaVAE(BaseVAE):
         self.latent_dim = latent_dim
 
         if not hidden_dims:
-            hidden_dims = [768, 512]
+            hidden_dims = [768, 512, 256, 128]
 
         # Changing in_channels
         changing_in_channels = in_channels
@@ -125,13 +125,13 @@ class VanillaVAE(BaseVAE):
         log_var = args[3]
 
         kld_weight = kwargs['M_N'] # Account for the minibatch samples from the dataset
-        recons_loss =F.mse_loss(recons, input)
+        recons_loss = F.mse_loss(recons, input)
 
 
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
 
         loss = recons_loss + kld_weight * kld_loss
-        return {'loss': loss, 'Reconstruction_Loss':recons_loss.detach(), 'KLD':-kld_loss.detach()}
+        return {'loss': loss, 'Reconstruction_Loss':recons_loss.detach(), 'KLD':kld_loss.detach()}
 
     def sample(self,
                num_samples:int,
@@ -163,7 +163,7 @@ class VanillaVAE(BaseVAE):
 
         return self.forward(x)[0]
     
-    def fit(self, data_loader: Tensor, epochs: int, learning_rate):
+    def fit(self, data_loader: Tensor, num_total_train: int, epochs: int, learning_rate):
         """
         Given a dataset data, returns a trained VAE object
         :param data_loader: (Tensor) [N x B x 1536]
@@ -176,9 +176,22 @@ class VanillaVAE(BaseVAE):
             for (_, tokens, _) in td:
                 tokens = torch.stack([x.to(self.device) for x in tokens], dim=0) # GPU
                 optimizer.zero_grad()
-                tokens_hat, mu, sigma = self.forward(tokens)
-                sigma = torch.exp(sigma)
-                loss = ((tokens - tokens_hat)**2).sum() + (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+                try:
+                    tokens_hat, mu, sigma = self.forward(tokens)
+                except:
+                    continue
+
+                # Loss
+                M_N = tokens.shape[0] / num_total_train
+                M_N = 1 / num_total_train
+                loss_dict = self.loss_function(tokens, tokens_hat, mu, sigma, M_N=M_N)
+                loss = loss_dict["loss"]
+
+                # Backward
                 loss.backward()
                 optimizer.step()
-                td.set_postfix(loss=loss)
+                td.set_postfix(
+                    loss=loss.item(),
+                    recon=loss_dict["Reconstruction_Loss"].item(),
+                    kl_div=loss_dict["KLD"].item(),
+                )
