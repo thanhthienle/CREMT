@@ -29,6 +29,7 @@ class Param:
         parser.add_argument("--vocab_size", default=30522, type=int)
         parser.add_argument("--marker_size", default=4, type=int)
         parser.add_argument("--num_workers", default=0, type=int)
+        parser.add_argument("--encoder_checkpoint", action="store_true", default=False)
         parser.add_argument("--encoder_seprarate_embeddings", action="store_false", default=True)
 
         # MTL
